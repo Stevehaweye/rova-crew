@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { InviteModal } from './invite-modal'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -216,94 +217,6 @@ function HealthRing({ score }: { score: number }) {
           <span className="text-sm font-normal text-gray-400">/100</span>
         </p>
         <p className="text-xs font-semibold mt-1" style={{ color }}>{label}</p>
-      </div>
-    </div>
-  )
-}
-
-// ─── Share / Invite Modal ─────────────────────────────────────────────────────
-
-function ShareModal({
-  groupUrl,
-  groupName,
-  onClose,
-}: {
-  groupUrl: string
-  groupName: string
-  onClose: () => void
-}) {
-  const [copied, setCopied] = useState(false)
-
-  function handleCopy() {
-    navigator.clipboard.writeText(groupUrl).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
-      />
-
-      {/* Panel */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 z-10">
-        {/* Close */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"
-          aria-label="Close"
-        >
-          <XIcon className="w-4 h-4" />
-        </button>
-
-        <h3 className="text-lg font-bold text-gray-900 mb-1">Invite members</h3>
-        <p className="text-sm text-gray-500 mb-5">
-          Share your group link to invite people to {groupName}.
-        </p>
-
-        {/* QR Code */}
-        <div className="flex justify-center mb-5">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(groupUrl)}&bgcolor=ffffff&color=000000&qzone=1`}
-            alt="QR code for group invite link"
-            className="w-40 h-40 rounded-xl border border-gray-100"
-          />
-        </div>
-
-        {/* URL row */}
-        <div className="flex gap-2 mb-4">
-          <div className="flex-1 min-w-0 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 flex items-center gap-2">
-            <LinkIcon />
-            <span className="text-xs text-gray-700 truncate font-mono">{groupUrl}</span>
-          </div>
-          <button
-            onClick={handleCopy}
-            className="flex-shrink-0 px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2 transition-all"
-            style={
-              copied
-                ? { backgroundColor: '#D1FAE5', color: '#065F46' }
-                : { backgroundColor: '#0D7377', color: 'white' }
-            }
-          >
-            {copied ? <><CheckIcon /> Copied!</> : 'Copy'}
-          </button>
-        </div>
-
-        {/* WhatsApp — placeholder */}
-        <button
-          disabled
-          className="w-full py-3 rounded-xl font-semibold text-sm text-gray-400 bg-gray-50 border border-gray-100 flex items-center justify-center gap-2 cursor-not-allowed"
-        >
-          📱 Send WhatsApp migration message
-          <span className="text-[10px] bg-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
-            Week 6
-          </span>
-        </button>
       </div>
     </div>
   )
@@ -979,11 +892,13 @@ export default function AdminShell({
         </main>
       </div>
 
-      {/* Share Modal */}
+      {/* Invite Modal */}
       {shareModalOpen && (
-        <ShareModal
+        <InviteModal
           groupUrl={groupUrl}
           groupName={group.name}
+          groupSlug={group.slug}
+          groupColour={colour}
           onClose={() => setShareModalOpen(false)}
         />
       )}
