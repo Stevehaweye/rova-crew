@@ -131,6 +131,7 @@ function Step1Profile({ data, onChange, onContinue }: Step1Props) {
             aria-label="Upload profile photo"
           >
             {data.avatarPreview ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={data.avatarPreview}
                 alt="Avatar preview"
