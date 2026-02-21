@@ -31,6 +31,16 @@ interface RecentMember {
   joinedAt: string
 }
 
+interface UpcomingEvent {
+  id: string
+  title: string
+  startsAt: string
+  endsAt: string
+  location: string | null
+  maxCapacity: number | null
+  rsvpCount: number
+}
+
 export interface AdminData {
   group: Group
   profile: Profile
@@ -38,6 +48,7 @@ export interface AdminData {
   membersThisWeek: number
   recentMembers: RecentMember[]
   appUrl: string
+  upcomingEvents: UpcomingEvent[]
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -325,7 +336,7 @@ function WelcomeBanner({
 
 const NAV_ITEMS = [
   { icon: '📊', label: 'Dashboard',      key: 'dashboard',     available: true  },
-  { icon: '📅', label: 'Events',         key: 'events',        available: false },
+  { icon: '📅', label: 'Events',         key: 'events',        available: true  },
   { icon: '👥', label: 'Members',        key: 'members',       available: false },
   { icon: '📣', label: 'Announcements',  key: 'announcements', available: false },
   { icon: '🏆', label: 'Hall of Fame',   key: 'hof',           available: false },
@@ -688,6 +699,7 @@ export default function AdminShell({
   membersThisWeek,
   recentMembers,
   appUrl,
+  upcomingEvents,
 }: AdminData) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [shareModalOpen, setShareModalOpen] = useState(false)
@@ -789,10 +801,12 @@ export default function AdminShell({
 
               {/* Upcoming Events */}
               <StatCard icon={<CalendarIcon />} label="Upcoming Events" accentColor="#7C3AED">
-                <p className="text-3xl font-black text-gray-900">0</p>
-                <p className="text-xs text-gray-400 mt-1.5">
+                <p className="text-3xl font-black text-gray-900">{upcomingEvents.length}</p>
+                <p className="text-xs text-gray-400 mt-1.5 truncate">
                   Next:{' '}
-                  <span className="text-gray-600 font-medium">None scheduled</span>
+                  <span className="text-gray-600 font-medium">
+                    {upcomingEvents.length > 0 ? upcomingEvents[0].title : 'None planned'}
+                  </span>
                 </p>
               </StatCard>
 
@@ -819,10 +833,8 @@ export default function AdminShell({
                 <QuickActionCard
                   emoji="📅"
                   label="Create Event"
-                  description="Schedule your next meetup or session"
+                  description={upcomingEvents.length > 0 ? `You have ${upcomingEvents.length} upcoming event${upcomingEvents.length !== 1 ? 's' : ''}` : 'Schedule your next meetup or session'}
                   href={`/g/${group.slug}/admin/events/new`}
-                  disabled
-                  comingSoon="Week 2"
                 />
                 <QuickActionCard
                   emoji="📣"
@@ -848,7 +860,85 @@ export default function AdminShell({
               </div>
             </div>
 
-            {/* ── Row 3: Recent Members ──────────────────────────────── */}
+            {/* ── Row 3: Upcoming Events ──────────────────────────────── */}
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-base font-bold text-gray-900">Upcoming Events</h2>
+                <Link
+                  href={`/g/${group.slug}/admin/events`}
+                  className="text-xs font-semibold hover:opacity-70 transition-opacity"
+                  style={{ color: colour }}
+                >
+                  View all events &rarr;
+                </Link>
+              </div>
+
+              {upcomingEvents.length === 0 ? (
+                <div className="py-10 text-center">
+                  <p className="text-4xl mb-3 select-none">📅</p>
+                  <p className="text-sm text-gray-400 mb-3">No upcoming events yet.</p>
+                  <Link
+                    href={`/g/${group.slug}/admin/events/new`}
+                    className="text-sm font-semibold hover:opacity-70 transition-opacity"
+                    style={{ color: colour }}
+                  >
+                    Create your first event &rarr;
+                  </Link>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {upcomingEvents.map((ev) => {
+                    const start = new Date(ev.startsAt)
+                    const dateStr = start.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+                    const timeStr = start.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                    return (
+                      <div
+                        key={ev.id}
+                        className="flex items-center gap-4 p-3 rounded-xl hover:bg-gray-50 transition-colors"
+                      >
+                        {/* Date block */}
+                        <div
+                          className="flex-shrink-0 w-11 h-11 rounded-xl flex flex-col items-center justify-center text-white"
+                          style={{ backgroundColor: colour }}
+                        >
+                          <span className="text-[9px] font-bold uppercase leading-none">
+                            {start.toLocaleDateString('en-GB', { month: 'short' })}
+                          </span>
+                          <span className="text-lg font-black leading-none">{start.getDate()}</span>
+                        </div>
+
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 truncate">{ev.title}</p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {dateStr} &middot; {timeStr}
+                            {ev.location && <> &middot; {ev.location}</>}
+                          </p>
+                        </div>
+
+                        {/* RSVP count */}
+                        <div className="flex-shrink-0 text-right">
+                          <p className="text-sm font-bold text-gray-900">{ev.rsvpCount}</p>
+                          <p className="text-[10px] text-gray-400">going</p>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex-shrink-0 flex items-center gap-1.5">
+                          <Link
+                            href={`/events/${ev.id}`}
+                            className="text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+                          >
+                            View
+                          </Link>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* ── Row 4: Recent Members ──────────────────────────────── */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
               <div className="flex items-center justify-between mb-2">
                 <h2 className="text-base font-bold text-gray-900">Recent Members</h2>

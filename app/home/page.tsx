@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import UserMenu from './user-menu'
 
@@ -18,6 +19,16 @@ interface Group {
   primary_colour: string
   category: string
   tagline: string | null
+}
+
+interface UpcomingEvent {
+  id: string
+  title: string
+  startsAt: string
+  location: string | null
+  groupName: string
+  groupColour: string
+  rsvpStatus: 'going' | 'maybe' | null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -283,10 +294,12 @@ function HasGroupsContent({
   profile,
   groups,
   memberCounts,
+  upcomingEvents,
 }: {
   profile: Profile
   groups: Group[]
   memberCounts: Record<string, number>
+  upcomingEvents: UpcomingEvent[]
 }) {
   const first = firstName(profile.full_name)
 
@@ -325,20 +338,82 @@ function HasGroupsContent({
             </div>
           </section>
 
-          {/* Upcoming Events — placeholder */}
+          {/* Coming up for you */}
           <section>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-bold text-gray-900">Upcoming Events</h2>
+              <h2 className="text-base font-bold text-gray-900">Coming up for you</h2>
             </div>
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-10 text-center">
-              <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mx-auto mb-4 text-gray-400">
-                <CalendarIcon />
+
+            {upcomingEvents.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-10 text-center">
+                <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mx-auto mb-4 text-gray-400">
+                  <CalendarIcon />
+                </div>
+                <p className="font-semibold text-gray-700 text-sm">No upcoming events</p>
+                <p className="text-gray-400 text-xs mt-1">
+                  Create one or{' '}
+                  <Link href="#" className="font-semibold hover:underline" style={{ color: '#0D7377' }}>
+                    explore groups &rarr;
+                  </Link>
+                </p>
               </div>
-              <p className="font-semibold text-gray-700 text-sm">No upcoming events</p>
-              <p className="text-gray-400 text-xs mt-1">
-                Events from your groups will appear here.
-              </p>
-            </div>
+            ) : (
+              <div className="space-y-3">
+                {upcomingEvents.map((ev) => {
+                  const start = new Date(ev.startsAt)
+                  const monthStr = format(start, 'MMM')
+                  const dayStr = start.getDate().toString()
+                  const dateTimeStr = format(start, "EEE d MMM · h:mm a")
+                  const colour = ev.groupColour
+
+                  return (
+                    <Link
+                      key={ev.id}
+                      href={`/events/${ev.id}`}
+                      className="group flex bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md hover:border-gray-200 transition-all duration-200"
+                    >
+                      {/* Colour bar */}
+                      <div className="w-1.5 flex-shrink-0" style={{ backgroundColor: colour }} />
+
+                      <div className="flex-1 px-4 py-4 flex items-center gap-4 min-w-0">
+                        {/* Date block */}
+                        <div
+                          className="flex-shrink-0 w-12 h-12 rounded-xl flex flex-col items-center justify-center text-white"
+                          style={{ backgroundColor: colour }}
+                        >
+                          <span className="text-[10px] font-bold uppercase leading-none">{monthStr}</span>
+                          <span className="text-lg font-black leading-none">{dayStr}</span>
+                        </div>
+
+                        {/* Info */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-medium text-gray-400 truncate">{ev.groupName}</p>
+                          <p className="font-semibold text-gray-900 text-sm truncate group-hover:underline">{ev.title}</p>
+                          <p className="text-xs text-gray-500 mt-0.5 truncate">
+                            {dateTimeStr}
+                            {ev.location && <> · {ev.location}</>}
+                          </p>
+                        </div>
+
+                        {/* RSVP status */}
+                        {ev.rsvpStatus ? (
+                          <span className="flex-shrink-0 text-xs font-semibold text-emerald-600 flex items-center gap-1">
+                            ✓ Going
+                          </span>
+                        ) : (
+                          <span
+                            className="flex-shrink-0 text-xs font-semibold flex items-center gap-0.5"
+                            style={{ color: '#0D7377' }}
+                          >
+                            RSVP <ChevronRightIcon />
+                          </span>
+                        )}
+                      </div>
+                    </Link>
+                  )
+                })}
+              </div>
+            )}
           </section>
         </div>
 
@@ -462,22 +537,64 @@ export default async function HomePage() {
     .map((m) => m.groups as unknown as Group)
     .filter(Boolean)
 
-  // Fetch member counts for each group
-  const memberCounts: Record<string, number> = {}
-  if (groups.length > 0) {
-    const { data: countRows } = await supabase
-      .from('group_members')
-      .select('group_id')
-      .in(
-        'group_id',
-        groups.map((g) => g.id)
-      )
-      .eq('status', 'approved')
+  // Fetch member counts + upcoming events in parallel
+  const groupIds = groups.map((g) => g.id)
+  const now = new Date().toISOString()
 
-    countRows?.forEach(({ group_id }) => {
-      memberCounts[group_id] = (memberCounts[group_id] ?? 0) + 1
+  const [countRes, eventsRes] = groups.length > 0
+    ? await Promise.all([
+        supabase
+          .from('group_members')
+          .select('group_id')
+          .in('group_id', groupIds)
+          .eq('status', 'approved'),
+        supabase
+          .from('events')
+          .select('id, title, starts_at, location, group_id')
+          .in('group_id', groupIds)
+          .gte('starts_at', now)
+          .order('starts_at', { ascending: true })
+          .limit(5),
+      ])
+    : [{ data: [] as { group_id: string }[] }, { data: [] as { id: string; title: string; starts_at: string; location: string | null; group_id: string }[] }]
+
+  const memberCounts: Record<string, number> = {}
+  countRes.data?.forEach(({ group_id }) => {
+    memberCounts[group_id] = (memberCounts[group_id] ?? 0) + 1
+  })
+
+  // Build group lookup for event cards
+  const groupMap = Object.fromEntries(groups.map((g) => [g.id, g]))
+
+  // Fetch user's RSVPs for these events
+  const rawEvents = eventsRes.data ?? []
+  const rsvpMap: Record<string, 'going' | 'maybe'> = {}
+  if (rawEvents.length > 0) {
+    const eventIds = rawEvents.map((e) => e.id)
+    const { data: userRsvps } = await supabase
+      .from('rsvps')
+      .select('event_id, status')
+      .eq('user_id', user.id)
+      .in('event_id', eventIds)
+      .in('status', ['going', 'maybe'])
+
+    userRsvps?.forEach((r) => {
+      rsvpMap[r.event_id] = r.status as 'going' | 'maybe'
     })
   }
+
+  const upcomingEvents: UpcomingEvent[] = rawEvents.map((e) => {
+    const g = groupMap[e.group_id]
+    return {
+      id: e.id,
+      title: e.title,
+      startsAt: e.starts_at,
+      location: e.location,
+      groupName: g?.name ?? 'Group',
+      groupColour: hex(g?.primary_colour ?? '0D7377'),
+      rsvpStatus: rsvpMap[e.id] ?? null,
+    }
+  })
 
   const hasGroups = groups.length > 0
 
@@ -491,6 +608,7 @@ export default async function HomePage() {
             profile={profile}
             groups={groups}
             memberCounts={memberCounts}
+            upcomingEvents={upcomingEvents}
           />
         ) : (
           <EmptyState name={profile.full_name} />

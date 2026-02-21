@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import { JoinCard } from './join-button'
 
@@ -27,6 +28,14 @@ interface MemberProfile {
 interface MemberStats {
   tier: string
   crew_score: number
+}
+
+interface UpcomingEventData {
+  id: string
+  title: string
+  startsAt: string
+  location: string | null
+  rsvpCount: number
 }
 
 interface Member {
@@ -238,11 +247,17 @@ function StatsBar({
   group,
   colour,
   memberCount,
+  nextEventDate,
 }: {
   group: Group
   colour: string
   memberCount: number
+  nextEventDate: string | null
 }) {
+  const nextLabel = nextEventDate
+    ? format(new Date(nextEventDate), 'EEE d MMM')
+    : 'Coming soon'
+
   return (
     <div className="bg-white border-b border-gray-100 shadow-sm">
       <div className="max-w-6xl mx-auto px-5 sm:px-10 py-3.5 flex items-center gap-5 sm:gap-8 flex-wrap">
@@ -254,7 +269,7 @@ function StatsBar({
         </div>
         <div className="flex items-center gap-1.5 text-gray-700 text-sm font-medium">
           <CalendarIcon className="w-4 h-4 text-gray-400" />
-          <span className="text-gray-500">Next event: <strong className="text-gray-700">Coming soon</strong></span>
+          <span className="text-gray-500">Next event: <strong className="text-gray-700">{nextLabel}</strong></span>
         </div>
         <span
           className="px-3 py-1 rounded-full text-xs font-semibold"
@@ -283,62 +298,85 @@ function About({ description }: { description: string }) {
   )
 }
 
-// ─── Upcoming Events (placeholder) ───────────────────────────────────────────
+// ─── Upcoming Events ─────────────────────────────────────────────────────────
 
-function UpcomingEvents({ colour }: { colour: string }) {
-  // Placeholder cards — real data in Week 2
-  const placeholders = [
-    { name: 'Morning Run — Hove Seafront', date: 'Sat 1 Mar · 8:00am', location: 'Hove Seafront', rsvps: 12 },
-    { name: 'Sunday Long Run', date: 'Sun 2 Mar · 9:00am', location: 'Preston Park', rsvps: 8 },
-    { name: 'Thursday Track Session', date: 'Thu 6 Mar · 6:30pm', location: 'Withdean Athletics', rsvps: 15 },
-  ]
-
+function UpcomingEvents({
+  events,
+  groupSlug,
+  colour,
+}: {
+  events: UpcomingEventData[]
+  groupSlug: string
+  colour: string
+}) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-base font-bold text-gray-900">Upcoming Events</h2>
-        <span
-          className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full"
-          style={{ backgroundColor: colour + '15', color: colour }}
-        >
-          Coming Week 2
-        </span>
-      </div>
-
-      <div className="space-y-3">
-        {placeholders.map((ev) => (
-          <div
-            key={ev.name}
-            className="flex items-start gap-4 p-4 rounded-xl border border-gray-100 hover:border-gray-200 transition-colors"
+        {events.length > 0 && (
+          <Link
+            href={`/g/${groupSlug}/admin/events`}
+            className="text-xs font-semibold transition-opacity hover:opacity-75"
+            style={{ color: colour }}
           >
-            {/* Date block */}
-            <div
-              className="flex-shrink-0 w-12 h-12 rounded-xl flex flex-col items-center justify-center text-white"
-              style={{ backgroundColor: colour }}
-            >
-              <span className="text-[10px] font-bold uppercase leading-none">
-                {ev.date.split(' ')[1]}
-              </span>
-              <span className="text-lg font-black leading-none">
-                {ev.date.split(' ')[0].split(' ')[0]}
-              </span>
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-gray-900 text-sm truncate">{ev.name}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{ev.date} · {ev.location}</p>
-              <p className="text-xs text-gray-400 mt-1">{ev.rsvps} going</p>
-            </div>
-
-            <button
-              className="flex-shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full border-2 transition-colors"
-              style={{ borderColor: colour, color: colour }}
-            >
-              RSVP
-            </button>
-          </div>
-        ))}
+            See all events &rarr;
+          </Link>
+        )}
       </div>
+
+      {events.length === 0 ? (
+        <div className="text-center py-8">
+          <p className="text-2xl mb-2 select-none">📅</p>
+          <p className="text-sm font-medium text-gray-500">No upcoming events</p>
+          <p className="text-xs text-gray-400 mt-1">Check back soon for new events.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {events.map((ev) => {
+            const start = new Date(ev.startsAt)
+            const monthStr = format(start, 'MMM')
+            const dayStr = start.getDate().toString()
+            const dateTimeStr = format(start, "EEE d MMM · h:mm a")
+
+            return (
+              <Link
+                key={ev.id}
+                href={`/events/${ev.id}`}
+                className="flex items-start gap-4 p-4 rounded-xl border border-gray-100 hover:border-gray-200 transition-colors group"
+              >
+                {/* Date block */}
+                <div
+                  className="flex-shrink-0 w-12 h-12 rounded-xl flex flex-col items-center justify-center text-white"
+                  style={{ backgroundColor: colour }}
+                >
+                  <span className="text-[10px] font-bold uppercase leading-none">
+                    {monthStr}
+                  </span>
+                  <span className="text-lg font-black leading-none">
+                    {dayStr}
+                  </span>
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-900 text-sm truncate group-hover:underline">{ev.title}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {dateTimeStr}
+                    {ev.location && <> · {ev.location}</>}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">{ev.rsvpCount} going</p>
+                </div>
+
+                <span
+                  className="flex-shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full border-2 transition-colors"
+                  style={{ borderColor: colour, color: colour }}
+                >
+                  View
+                </span>
+              </Link>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -508,8 +546,9 @@ export default async function GroupPage({
     return <PrivateGroupView group={group} colour={hex(group.primary_colour)} />
   }
 
-  // Parallel fetch: member count + member profiles (up to 12)
-  const [countResult, membersResult] = await Promise.all([
+  // Parallel fetch: member count + member profiles (up to 12) + upcoming events
+  const now = new Date().toISOString()
+  const [countResult, membersResult, upcomingEventsResult] = await Promise.all([
     supabase
       .from('group_members')
       .select('*', { count: 'exact', head: true })
@@ -522,6 +561,13 @@ export default async function GroupPage({
       .eq('status', 'approved')
       .order('joined_at', { ascending: true })
       .limit(12),
+    supabase
+      .from('events')
+      .select('id, title, starts_at, location')
+      .eq('group_id', group.id)
+      .gte('starts_at', now)
+      .order('starts_at', { ascending: true })
+      .limit(3),
   ])
 
   const memberCount = countResult.count ?? 0
@@ -549,6 +595,41 @@ export default async function GroupPage({
     stats: statsMap[m.user_id] ?? null,
   }))
 
+  // Build upcoming events with RSVP counts
+  const rawEvents = upcomingEventsResult.data ?? []
+  const eventRsvpCounts: Record<string, number> = {}
+  if (rawEvents.length > 0) {
+    const eventIds = rawEvents.map((e) => e.id)
+    const [memberRsvps, guestRsvps] = await Promise.all([
+      supabase
+        .from('rsvps')
+        .select('event_id')
+        .in('event_id', eventIds)
+        .in('status', ['going', 'maybe']),
+      supabase
+        .from('guest_rsvps')
+        .select('event_id')
+        .in('event_id', eventIds)
+        .in('status', ['going', 'maybe']),
+    ])
+    for (const r of memberRsvps.data ?? []) {
+      eventRsvpCounts[r.event_id] = (eventRsvpCounts[r.event_id] ?? 0) + 1
+    }
+    for (const r of guestRsvps.data ?? []) {
+      eventRsvpCounts[r.event_id] = (eventRsvpCounts[r.event_id] ?? 0) + 1
+    }
+  }
+
+  const upcomingEvents: UpcomingEventData[] = rawEvents.map((e) => ({
+    id: e.id,
+    title: e.title,
+    startsAt: e.starts_at,
+    location: e.location,
+    rsvpCount: eventRsvpCounts[e.id] ?? 0,
+  }))
+
+  const nextEventDate = upcomingEvents.length > 0 ? upcomingEvents[0].startsAt : null
+
   const colour = hex(group.primary_colour)
   const initialStatus = membership?.status as 'approved' | 'pending' | null ?? null
 
@@ -559,7 +640,7 @@ export default async function GroupPage({
       <Hero group={group} colour={colour} />
 
       {/* Stats bar */}
-      <StatsBar group={group} colour={colour} memberCount={memberCount} />
+      <StatsBar group={group} colour={colour} memberCount={memberCount} nextEventDate={nextEventDate} />
 
       {/* Main content */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 py-10">
@@ -568,7 +649,7 @@ export default async function GroupPage({
           {/* ── Left column ──────────────────────────────────────────── */}
           <div className="space-y-8 min-w-0">
             {group.description && <About description={group.description} />}
-            <UpcomingEvents colour={colour} />
+            <UpcomingEvents events={upcomingEvents} groupSlug={group.slug} colour={colour} />
             <MemberWall
               members={members}
               groupSlug={group.slug}
