@@ -14,18 +14,11 @@ export async function middleware(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  console.log('[middleware] NEXT_PUBLIC_SUPABASE_URL =', supabaseUrl)
-
   if (
     !supabaseUrl ||
     !supabaseAnonKey ||
     !/^https?:\/\//.test(supabaseUrl)
   ) {
-    console.error(
-      '[middleware] Missing or invalid Supabase env vars.',
-      `NEXT_PUBLIC_SUPABASE_URL="${supabaseUrl}"`,
-      '— must be a valid https:// URL. Update .env.local with your real Supabase project credentials.'
-    )
     return NextResponse.next({ request })
   }
 
