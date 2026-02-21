@@ -469,7 +469,7 @@ export default function NewGroupPage() {
           .from('group-logos')
           .upload(path, form.logoFile, { upsert: true })
         if (uploadErr) {
-          console.warn('[groups/new] logo upload failed:', uploadErr.message)
+          throw new Error(`Logo upload failed: ${uploadErr.message}`)
         } else if (upload) {
           logoUrl = supabase.storage
             .from('group-logos')
@@ -512,11 +512,13 @@ export default function NewGroupPage() {
       })
 
       router.push(`/g/${group.slug}/admin`)
-    } catch (err) {
-      setErrors({
-        submit:
-          err instanceof Error ? err.message : 'Something went wrong. Please try again.',
-      })
+    } catch (err: unknown) {
+      const message =
+        (err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string')
+          ? (err as { message: string }).message
+          : 'Something went wrong. Please try again.'
+      console.error('[groups/new] submit error:', err)
+      setErrors({ submit: message })
       setSubmitting(false)
     }
   }

@@ -139,7 +139,9 @@ export default function AuthPage() {
 
     if (error) {
       setFormState('error')
-      setErrorMsg(error.message)
+      const msg = error.message || error.name || JSON.stringify(error)
+      console.error('[auth] signInWithOtp error:', error)
+      setErrorMsg(msg)
     } else {
       setFormState('success')
     }
@@ -239,11 +241,12 @@ export default function AuthPage() {
                       type="button"
                       onClick={() => switchTab(t)}
                       className={[
-                        'flex-1 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
+                        'flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200',
                         tab === t
-                          ? 'bg-white text-gray-900 shadow-sm'
+                          ? 'text-white shadow-sm'
                           : 'text-gray-500 hover:text-gray-700',
                       ].join(' ')}
+                      style={tab === t ? { backgroundColor: '#0D7377' } : undefined}
                     >
                       {t === 'signin' ? 'Sign in' : 'Create account'}
                     </button>
