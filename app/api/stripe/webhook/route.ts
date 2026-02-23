@@ -37,10 +37,10 @@ export async function POST(request: NextRequest) {
     const session = event.data.object as Stripe.Checkout.Session
 
     const eventId = session.metadata?.event_id
-    const userId = session.metadata?.user_id
+    const userId = session.metadata?.user_id || null
     const isGuest = session.metadata?.is_guest === 'true'
-    const guestName = session.metadata?.guest_name
-    const guestEmail = session.metadata?.guest_email
+    const guestName = session.metadata?.guest_name || null
+    const guestEmail = session.metadata?.guest_email || null
 
     if (!eventId) {
       console.error('[stripe-webhook] No event_id in metadata')
@@ -59,9 +59,9 @@ export async function POST(request: NextRequest) {
       })
       .eq('stripe_checkout_session_id', session.id)
 
-    if (isGuest && guestName && guestEmail) {
+    if (isGuest && guestEmail) {
       // Split guest name into first/last
-      const nameParts = guestName.trim().split(/\s+/)
+      const nameParts = (guestName ?? 'Guest').trim().split(/\s+/)
       const firstName = nameParts[0] ?? 'Guest'
       const lastName = nameParts.slice(1).join(' ') || 'Guest'
 

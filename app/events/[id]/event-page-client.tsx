@@ -1054,6 +1054,8 @@ export default function EventPageClient({
           body: JSON.stringify({
             event_id: event.id,
             guest_email: guestEmail.trim(),
+            guest_first_name: guestFirstName.trim(),
+            guest_last_name: guestLastName.trim(),
           }),
         })
         const data = await res.json()

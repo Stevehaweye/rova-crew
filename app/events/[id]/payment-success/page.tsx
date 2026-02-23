@@ -77,11 +77,18 @@ export default async function PaymentSuccessPage({
       .maybeSingle()
 
     if (!existing) {
+      // Extract name from session metadata, fall back to email prefix
+      const guestName = session.metadata?.guest_name || ''
+      const nameParts = guestName.trim().split(/\s+/)
+      const firstName = nameParts[0] || metaGuestEmail.split('@')[0]
+      const lastName = nameParts.slice(1).join(' ') || 'Guest'
+
       await serviceClient.from('guest_rsvps').insert({
         event_id: eventId,
-        name: metaGuestEmail.split('@')[0],
+        first_name: firstName,
+        last_name: lastName,
         email: metaGuestEmail,
-        status: 'going',
+        status: 'confirmed',
       })
     }
   }

@@ -5,7 +5,7 @@ import { getStripeServer } from '@/lib/stripe'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { event_id, user_id, guest_email } = body
+  const { event_id, user_id, guest_email, guest_first_name, guest_last_name } = body
 
   if (!event_id) {
     return NextResponse.json({ error: 'Missing event_id' }, { status: 400 })
@@ -106,7 +106,11 @@ export async function POST(request: NextRequest) {
       metadata: {
         event_id,
         user_id: verifiedUserId ?? '',
+        is_guest: verifiedUserId ? 'false' : 'true',
         guest_email: guest_email ?? '',
+        guest_name: guest_first_name && guest_last_name
+          ? `${guest_first_name} ${guest_last_name}`
+          : '',
       },
       success_url: `${appUrl}/events/${event_id}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/events/${event_id}`,
