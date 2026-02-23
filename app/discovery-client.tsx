@@ -466,7 +466,7 @@ export default function DiscoveryClient({ groups, stats, isLoggedIn }: Props) {
   }, [groups, search, category])
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pb-24">
       {/* Nav overlay on hero */}
       <nav className="absolute top-0 left-0 right-0 z-20 px-5 sm:px-8 pt-5 flex items-center justify-between max-w-6xl mx-auto">
         <span className="select-none">

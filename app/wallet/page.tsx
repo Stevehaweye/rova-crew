@@ -129,7 +129,7 @@ export default async function WalletPage() {
         </div>
       </nav>
 
-      <main className="max-w-lg mx-auto px-4 py-6">
+      <main className="max-w-lg mx-auto px-4 py-6 pb-24">
         <CrewCardClient
           userId={user.id}
           fullName={profile.full_name}

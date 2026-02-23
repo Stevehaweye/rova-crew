@@ -599,7 +599,7 @@ export default async function HomePage() {
   const hasGroups = groups.length > 0
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pb-24">
       <TopNav profile={profile} />
 
       <main>
@@ -619,7 +619,7 @@ export default async function HomePage() {
       {hasGroups && (
         <Link
           href="/groups/new"
-          className="fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-white lg:hidden transition-transform hover:scale-105 active:scale-95"
+          className="fixed bottom-24 right-6 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-white lg:hidden transition-transform hover:scale-105 active:scale-95"
           style={{ backgroundColor: '#0D7377' }}
           aria-label="Create a new group"
         >
