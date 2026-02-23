@@ -5,6 +5,13 @@ import { getStripeServer } from '@/lib/stripe'
 
 export async function POST(request: NextRequest) {
   try {
+    if (!process.env.STRIPE_SECRET_KEY) {
+      return NextResponse.json({ error: 'STRIPE_SECRET_KEY is not configured' }, { status: 500 })
+    }
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      return NextResponse.json({ error: 'SUPABASE_SERVICE_ROLE_KEY is not configured' }, { status: 500 })
+    }
+
     const body = await request.json()
     const { group_id, slug } = body as { group_id: string; slug: string }
 
@@ -100,10 +107,12 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json({ url: accountLink.url })
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('[stripe/connect] error:', err)
+    const message =
+      err instanceof Error ? err.message : 'Failed to create Stripe account'
     return NextResponse.json(
-      { error: 'Failed to create Stripe account' },
+      { error: message },
       { status: 500 }
     )
   }
