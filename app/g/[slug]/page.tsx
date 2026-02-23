@@ -635,7 +635,7 @@ export default async function GroupPage({
   const initialStatus = membership?.status as 'approved' | 'pending' | null ?? null
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pb-24">
 
       {/* Hero */}
       <Hero group={group} colour={colour} />

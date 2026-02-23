@@ -5,9 +5,11 @@ import { usePathname } from 'next/navigation'
 
 // ─── Route visibility ────────────────────────────────────────────────────────
 
-const NAV_ROUTES = ['/home', '/discover', '/wallet', '/profile']
+const NAV_ROUTES = ['/home', '/discover', '/wallet', '/profile', '/g']
 
 function shouldShow(pathname: string): boolean {
+  // Show on all nav routes, but hide on admin sub-pages (they have their own nav)
+  if (pathname.match(/^\/g\/[^/]+\/admin/)) return false
   return NAV_ROUTES.some((r) => pathname === r || pathname.startsWith(r + '/'))
 }
 
