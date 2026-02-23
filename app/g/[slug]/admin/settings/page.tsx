@@ -1,13 +1,18 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
+import { getStripeServer } from '@/lib/stripe'
 import SettingsClient from './settings-client'
 
 export default async function SettingsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>
+  searchParams: Promise<{ stripe?: string }>
 }) {
   const { slug } = await params
+  const { stripe: stripeParam } = await searchParams
   const supabase = await createClient()
 
   // Auth check
@@ -41,11 +46,40 @@ export default async function SettingsPage({
   if (!isAdmin) redirect(`/g/${slug}`)
 
   // Fetch Stripe account status
-  const { data: stripeAccount } = await supabase
+  let { data: stripeAccount } = await supabase
     .from('stripe_accounts')
     .select('stripe_account_id, charges_enabled, payouts_enabled, details_submitted')
     .eq('group_id', group.id)
     .maybeSingle()
+
+  // When returning from Stripe onboarding, refresh status directly from Stripe
+  if (stripeParam === 'complete' && stripeAccount?.stripe_account_id) {
+    try {
+      const stripe = getStripeServer()
+      const account = await stripe.accounts.retrieve(stripeAccount.stripe_account_id)
+      const serviceClient = createServiceClient()
+
+      await serviceClient
+        .from('stripe_accounts')
+        .update({
+          charges_enabled: account.charges_enabled ?? false,
+          payouts_enabled: account.payouts_enabled ?? false,
+          details_submitted: account.details_submitted ?? false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('stripe_account_id', stripeAccount.stripe_account_id)
+
+      // Use the fresh data
+      stripeAccount = {
+        ...stripeAccount,
+        charges_enabled: account.charges_enabled ?? false,
+        payouts_enabled: account.payouts_enabled ?? false,
+        details_submitted: account.details_submitted ?? false,
+      }
+    } catch (err) {
+      console.error('[settings] Failed to refresh Stripe status:', err)
+    }
+  }
 
   const colour = group.primary_colour?.startsWith('#')
     ? group.primary_colour
