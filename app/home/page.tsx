@@ -192,7 +192,7 @@ function EmptyState({ name }: { name: string }) {
             Browse groups near you. From running crews to book clubs — find your people.
           </p>
           <Link
-            href="#"
+            href="/discover"
             className="inline-flex items-center justify-center gap-2 w-full py-3.5 rounded-xl font-semibold text-sm border-2 border-gray-200 text-gray-700 hover:border-gray-300 transition-colors"
           >
             Discover groups
@@ -352,7 +352,7 @@ function HasGroupsContent({
                 <p className="font-semibold text-gray-700 text-sm">No upcoming events</p>
                 <p className="text-gray-400 text-xs mt-1">
                   Create one or{' '}
-                  <Link href="#" className="font-semibold hover:underline" style={{ color: '#0D7377' }}>
+                  <Link href="/discover" className="font-semibold hover:underline" style={{ color: '#0D7377' }}>
                     explore groups &rarr;
                   </Link>
                 </p>

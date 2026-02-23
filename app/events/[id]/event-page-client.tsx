@@ -655,7 +655,7 @@ export default function EventPageClient({
             }
 
             setMemberRsvps((prev) => {
-              if (prev.some((r) => r.id === rsvp.id)) return prev
+              if (prev.some((r) => r.id === rsvp.id || r.userId === rsvp.userId)) return prev
               return [...prev, rsvp]
             })
             setGoingCount((c) => c + 1)
@@ -713,6 +713,35 @@ export default function EventPageClient({
       console.error('[rsvp] error:', error)
       setRsvpStatus('error')
       return
+    }
+
+    // Optimistic update: add/update this user in the Who's Going list
+    if (status === 'going' || status === 'maybe') {
+      setMemberRsvps((prev) => {
+        const existing = prev.find((r) => r.userId === currentUser.id)
+        if (existing) {
+          return prev.map((r) => r.userId === currentUser.id ? { ...r, status } : r)
+        }
+        return [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            userId: currentUser.id,
+            status,
+            createdAt: new Date().toISOString(),
+            profile: { full_name: currentUser.fullName, avatar_url: currentUser.avatarUrl },
+          },
+        ]
+      })
+      // Update going count if transitioning to going/maybe from idle or not_going
+      if (rsvpStatus === 'idle' || rsvpStatus === 'not_going') {
+        setGoingCount((c) => c + 1)
+      }
+    } else if (status === 'not_going') {
+      setMemberRsvps((prev) => prev.filter((r) => r.userId !== currentUser.id))
+      if (rsvpStatus !== 'idle' && rsvpStatus !== 'not_going' && rsvpStatus !== 'error') {
+        setGoingCount((c) => Math.max(c - 1, 0))
+      }
     }
 
     setRsvpStatus(status)

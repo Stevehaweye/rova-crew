@@ -343,14 +343,21 @@ const NAV_ITEMS = [
   { icon: '⚙️', label: 'Settings',       key: 'settings',      available: false },
 ]
 
+const NAV_ROUTES: Record<string, (slug: string) => string> = {
+  dashboard: (slug) => `/g/${slug}/admin`,
+  events: (slug) => `/g/${slug}/admin/events`,
+}
+
 function SidebarContent({
   group,
   colour,
   activeKey = 'dashboard',
+  onNavigate,
 }: {
   group: Group
   colour: string
   activeKey?: string
+  onNavigate?: () => void
 }) {
   return (
     <div className="flex flex-col h-full">
@@ -379,12 +386,15 @@ function SidebarContent({
       <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
         {NAV_ITEMS.map((item) => {
           const isActive = item.key === activeKey
+          const route = NAV_ROUTES[item.key]
 
-          if (item.available) {
+          if (item.available && route) {
             return (
-              <div
+              <Link
                 key={item.key}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors"
+                href={route(group.slug)}
+                onClick={onNavigate}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors hover:bg-gray-50"
                 style={
                   isActive
                     ? { backgroundColor: colour + '18', color: colour }
@@ -399,7 +409,7 @@ function SidebarContent({
                     style={{ backgroundColor: colour }}
                   />
                 )}
-              </div>
+              </Link>
             )
           }
 
@@ -765,7 +775,7 @@ export default function AdminShell({
               </button>
             </div>
             <div className="flex-1 overflow-y-auto">
-              <SidebarContent group={group} colour={colour} activeKey="dashboard" />
+              <SidebarContent group={group} colour={colour} activeKey="dashboard" onNavigate={() => setSidebarOpen(false)} />
             </div>
           </div>
         </div>

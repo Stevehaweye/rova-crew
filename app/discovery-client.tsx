@@ -22,6 +22,7 @@ interface GroupCard {
 interface Props {
   groups: GroupCard[]
   stats: { communities: number; members: number; eventsThisMonth: number }
+  isLoggedIn?: boolean
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -87,7 +88,7 @@ function ChevronRight() {
 
 // ─── Hero ─────────────────────────────────────────────────────────────────────
 
-function Hero({ stats }: { stats: Props['stats'] }) {
+function Hero({ stats, isLoggedIn }: { stats: Props['stats']; isLoggedIn?: boolean }) {
   return (
     <section
       className="relative overflow-hidden"
@@ -143,7 +144,7 @@ function Hero({ stats }: { stats: Props['stats'] }) {
             Find a group near you
           </a>
           <Link
-            href="/groups/new"
+            href={isLoggedIn ? '/groups/new' : '/auth?next=/groups/new'}
             className="px-7 py-3.5 rounded-xl font-bold text-sm tracking-wide border-2 border-white/30 text-white transition-all hover:border-white/60 hover:bg-white/5 hover:-translate-y-0.5"
           >
             Create your community
@@ -186,7 +187,7 @@ function FilterBar({
   onCategoryChange: (v: string) => void
 }) {
   return (
-    <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-gray-100 shadow-sm">
+    <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-gray-100 shadow-sm overflow-hidden">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4">
         {/* Search input */}
         <div className="relative mb-3">
@@ -333,14 +334,14 @@ function GroupCardComponent({ group }: { group: GroupCard }) {
 
 // ─── Empty State ──────────────────────────────────────────────────────────────
 
-function EmptyState() {
+function EmptyState({ isLoggedIn }: { isLoggedIn?: boolean }) {
   return (
     <div className="text-center py-20 px-6">
       <div className="text-5xl mb-4 select-none">🔍</div>
       <p className="font-semibold text-gray-700 text-base mb-2">No groups found</p>
       <p className="text-gray-400 text-sm mb-6">Try a different search or category.</p>
       <Link
-        href="/groups/new"
+        href={isLoggedIn ? '/groups/new' : '/auth?next=/groups/new'}
         className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-white text-sm font-bold transition-opacity hover:opacity-90"
         style={{ backgroundColor: TEAL }}
       >
@@ -449,7 +450,7 @@ function Footer() {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function DiscoveryClient({ groups, stats }: Props) {
+export default function DiscoveryClient({ groups, stats, isLoggedIn }: Props) {
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
 
@@ -473,15 +474,15 @@ export default function DiscoveryClient({ groups, stats }: Props) {
           <span className="text-base font-black tracking-[0.14em]" style={{ color: GOLD }}>CREW</span>
         </span>
         <Link
-          href="/auth"
+          href={isLoggedIn ? '/home' : '/auth'}
           className="px-4 py-2 rounded-lg text-xs font-bold text-white/80 border border-white/20 hover:bg-white/10 hover:border-white/40 transition-all"
         >
-          Sign in
+          {isLoggedIn ? '← Dashboard' : 'Sign in'}
         </Link>
       </nav>
 
       {/* Hero */}
-      <Hero stats={stats} />
+      <Hero stats={stats} isLoggedIn={isLoggedIn} />
 
       {/* Filter bar */}
       <div id="groups">
@@ -496,7 +497,7 @@ export default function DiscoveryClient({ groups, stats }: Props) {
       {/* Groups grid */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
         {filtered.length === 0 ? (
-          <EmptyState />
+          <EmptyState isLoggedIn={isLoggedIn} />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
             {filtered.map((g) => (

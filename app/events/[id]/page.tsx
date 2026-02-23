@@ -139,13 +139,16 @@ export default async function EventPage({
         primaryColour: group.primary_colour,
       }}
       initialMemberRsvps={
-        (memberRsvps.data ?? []).map((r) => ({
-          id: r.id,
-          userId: r.user_id,
-          status: r.status as 'going' | 'maybe',
-          createdAt: r.created_at,
-          profile: r.profiles as unknown as { full_name: string; avatar_url: string | null },
-        }))
+        (memberRsvps.data ?? []).map((r) => {
+          const profile = r.profiles as unknown as { full_name: string; avatar_url: string | null } | null
+          return {
+            id: r.id,
+            userId: r.user_id,
+            status: r.status as 'going' | 'maybe',
+            createdAt: r.created_at,
+            profile: profile ?? { full_name: 'Member', avatar_url: null },
+          }
+        })
       }
       initialGuestRsvps={
         (guestRsvps.data ?? []).map((r) => ({
