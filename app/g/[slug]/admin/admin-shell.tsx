@@ -49,6 +49,7 @@ export interface AdminData {
   recentMembers: RecentMember[]
   appUrl: string
   upcomingEvents: UpcomingEvent[]
+  stripeConnected: boolean
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -340,12 +341,13 @@ const NAV_ITEMS = [
   { icon: '👥', label: 'Members',        key: 'members',       available: false },
   { icon: '📣', label: 'Announcements',  key: 'announcements', available: false },
   { icon: '🏆', label: 'Hall of Fame',   key: 'hof',           available: false },
-  { icon: '⚙️', label: 'Settings',       key: 'settings',      available: false },
+  { icon: '⚙️', label: 'Settings',       key: 'settings',      available: true  },
 ]
 
 const NAV_ROUTES: Record<string, (slug: string) => string> = {
   dashboard: (slug) => `/g/${slug}/admin`,
   events: (slug) => `/g/${slug}/admin/events`,
+  settings: (slug) => `/g/${slug}/admin/settings`,
 }
 
 function SidebarContent({
@@ -710,6 +712,7 @@ export default function AdminShell({
   recentMembers,
   appUrl,
   upcomingEvents,
+  stripeConnected,
 }: AdminData) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [shareModalOpen, setShareModalOpen] = useState(false)
@@ -793,6 +796,27 @@ export default function AdminShell({
                 is doing.
               </p>
             </div>
+
+            {/* ── Stripe CTA Banner ────────────────────────────────── */}
+            {!stripeConnected && (
+              <Link
+                href={`/g/${group.slug}/admin/settings`}
+                className="flex items-center gap-4 rounded-2xl border border-purple-200 bg-purple-50 p-4 hover:bg-purple-100 transition-colors"
+              >
+                <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 21Z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-purple-900">Connect Stripe to accept payments</p>
+                  <p className="text-xs text-purple-700 mt-0.5">Set up Stripe to create paid events and collect ticket payments.</p>
+                </div>
+                <svg className="w-5 h-5 text-purple-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                </svg>
+              </Link>
+            )}
 
             {/* ── Row 1: Stat Cards ─────────────────────────────────── */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

@@ -214,8 +214,16 @@ export async function POST(request: NextRequest) {
       `details_submitted=${account.details_submitted}`
     )
 
-    // Future: update group's Stripe Connect status in the database
-    // when Stripe Connect is implemented for group payouts
+    // Update the group's Stripe Connect status in the database
+    await supabase
+      .from('stripe_accounts')
+      .update({
+        charges_enabled: account.charges_enabled ?? false,
+        payouts_enabled: account.payouts_enabled ?? false,
+        details_submitted: account.details_submitted ?? false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('stripe_account_id', account.id)
   } else {
     console.log(`[stripe-webhook] Unhandled event type: ${event.type}`)
   }

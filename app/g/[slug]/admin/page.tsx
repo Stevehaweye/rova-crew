@@ -141,6 +141,15 @@ export default async function AdminPage({
     }
   }
 
+  // ── Check Stripe Connect status ──────────────────────────────────────────────
+  const { data: stripeAccount } = await supabase
+    .from('stripe_accounts')
+    .select('charges_enabled')
+    .eq('group_id', group.id)
+    .maybeSingle()
+
+  const stripeConnected = stripeAccount?.charges_enabled === true
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
 
   return (
@@ -151,6 +160,7 @@ export default async function AdminPage({
       membersThisWeek={membersThisWeek}
       recentMembers={recentMembers}
       appUrl={appUrl}
+      stripeConnected={stripeConnected}
       upcomingEvents={upcomingEvents.map((e) => ({
         id: e.id,
         title: e.title,

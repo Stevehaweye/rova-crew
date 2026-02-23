@@ -824,13 +824,13 @@ export default function EventForm({
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-amber-900">Connect Stripe to enable paid events</p>
                     <p className="text-xs text-amber-700 mt-0.5">You need a Stripe account to collect payments from attendees.</p>
-                    <button
-                      type="button"
+                    <Link
+                      href={`/g/${group.slug}/admin/settings`}
                       className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-200/60 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors"
                     >
                       <StripeLinkIcon />
                       Connect Stripe &rarr;
-                    </button>
+                    </Link>
                   </div>
                 </div>
               )}
