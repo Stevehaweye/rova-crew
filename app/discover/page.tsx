@@ -17,7 +17,7 @@ interface GroupRow {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function DiscoverPage() {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   const {
     data: { user },

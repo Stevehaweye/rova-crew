@@ -11,22 +11,23 @@ interface ProfileJoin {
 export default async function AdminPage({
   params,
 }: {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }) {
-  const supabase = createClient()
+  const { slug } = await params
+  const supabase = await createClient()
 
   // ── Auth check ────────────────────────────────────────────────────────────────
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user) redirect(`/auth?next=/g/${params.slug}/admin`)
+  if (!user) redirect(`/auth?next=/g/${slug}/admin`)
 
   // ── Fetch group ───────────────────────────────────────────────────────────────
   const { data: group } = await supabase
     .from('groups')
     .select('*')
-    .eq('slug', params.slug)
+    .eq('slug', slug)
     .maybeSingle()
 
   if (!group) redirect('/home')
@@ -43,7 +44,7 @@ export default async function AdminPage({
     membership?.status === 'approved' &&
     (membership.role === 'super_admin' || membership.role === 'co_admin')
 
-  if (!isAdmin) redirect(`/g/${params.slug}`)
+  if (!isAdmin) redirect(`/g/${slug}`)
 
   // ── Parallel data fetch ───────────────────────────────────────────────────────
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
@@ -130,7 +131,7 @@ export default async function AdminPage({
         .from('guest_rsvps')
         .select('event_id')
         .in('event_id', eventIds)
-        .in('status', ['going', 'maybe']),
+        .eq('status', 'confirmed'),
     ])
     for (const r of memberRsvps.data ?? []) {
       eventRsvpCounts[r.event_id] = (eventRsvpCounts[r.event_id] ?? 0) + 1

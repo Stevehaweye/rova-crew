@@ -30,15 +30,16 @@ function NotFoundView() {
 export default async function EventPage({
   params,
 }: {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }) {
-  const supabase = createClient()
+  const { id } = await params
+  const supabase = await createClient()
 
   // Fetch event with group info
   const { data: event } = await supabase
     .from('events')
     .select('*, groups ( name, slug, logo_url, primary_colour )')
-    .eq('id', params.id)
+    .eq('id', id)
     .maybeSingle()
 
   if (!event) return <NotFoundView />
@@ -68,21 +69,21 @@ export default async function EventPage({
     supabase
       .from('rsvps')
       .select('*', { count: 'exact', head: true })
-      .eq('event_id', params.id)
+      .eq('event_id', id)
       .in('status', ['going', 'maybe']),
 
-    // Guest RSVP count (going + maybe)
+    // Guest RSVP count (confirmed)
     supabase
       .from('guest_rsvps')
       .select('*', { count: 'exact', head: true })
-      .eq('event_id', params.id)
-      .in('status', ['going', 'maybe']),
+      .eq('event_id', id)
+      .eq('status', 'confirmed'),
 
     // Member RSVPs with profiles (limit 20)
     supabase
       .from('rsvps')
       .select('id, user_id, status, created_at, profiles ( full_name, avatar_url )')
-      .eq('event_id', params.id)
+      .eq('event_id', id)
       .in('status', ['going', 'maybe'])
       .order('created_at', { ascending: true })
       .limit(20),
@@ -90,9 +91,9 @@ export default async function EventPage({
     // Guest RSVPs (limit 20)
     supabase
       .from('guest_rsvps')
-      .select('id, name, email, status, created_at')
-      .eq('event_id', params.id)
-      .in('status', ['going', 'maybe'])
+      .select('id, first_name, last_name, email, status, created_at')
+      .eq('event_id', id)
+      .eq('status', 'confirmed')
       .order('created_at', { ascending: true })
       .limit(20),
 
@@ -101,7 +102,7 @@ export default async function EventPage({
       ? supabase
           .from('rsvps')
           .select('id, status')
-          .eq('event_id', params.id)
+          .eq('event_id', id)
           .eq('user_id', user.id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
@@ -116,8 +117,8 @@ export default async function EventPage({
       : Promise.resolve({ data: null }),
   ])
 
-  const totalGoingCount =
-    (memberRsvpCount.count ?? 0) + (guestRsvpCount.count ?? 0)
+  const memberGoingCount = memberRsvpCount.count ?? 0
+  const guestGoingCount = guestRsvpCount.count ?? 0
 
   return (
     <EventPageClient
@@ -131,6 +132,15 @@ export default async function EventPage({
         coverUrl: event.cover_url,
         maxCapacity: event.max_capacity,
         createdBy: event.created_by,
+        eventType: event.event_type ?? 'free',
+        priceAmount: event.price_amount ?? null,
+        totalCost: event.total_cost ?? null,
+        minParticipants: event.min_participants ?? null,
+        stripePriceId: event.stripe_price_id ?? null,
+        paymentType: event.payment_type ?? 'free',
+        totalCostPence: event.total_cost_pence ?? null,
+        allowGuestRsvp: event.allow_guest_rsvp ?? true,
+        pricePence: event.price_pence ?? null,
       }}
       group={{
         name: group.name,
@@ -153,12 +163,14 @@ export default async function EventPage({
       initialGuestRsvps={
         (guestRsvps.data ?? []).map((r) => ({
           id: r.id,
-          name: r.name,
-          status: r.status as 'going' | 'maybe',
+          firstName: r.first_name,
+          lastName: r.last_name,
+          status: r.status as 'confirmed',
           createdAt: r.created_at,
         }))
       }
-      totalGoingCount={totalGoingCount}
+      memberGoingCount={memberGoingCount}
+      guestGoingCount={guestGoingCount}
       currentUser={user ? {
         id: user.id,
         fullName: profileResult.data?.full_name ?? user.email?.split('@')[0] ?? 'You',

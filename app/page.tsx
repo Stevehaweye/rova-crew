@@ -18,7 +18,7 @@ interface GroupRow {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function RootPage() {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   // If logged in, redirect to dashboard
   const {

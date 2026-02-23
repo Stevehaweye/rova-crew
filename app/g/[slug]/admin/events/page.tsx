@@ -13,6 +13,9 @@ interface EventRow {
   max_capacity: number | null
   cover_url: string | null
   created_at: string
+  event_type: string | null
+  price_amount: number | null
+  total_cost: number | null
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -21,22 +24,24 @@ export default async function AdminEventsPage({
   params,
   searchParams,
 }: {
-  params: { slug: string }
-  searchParams: { tab?: string }
+  params: Promise<{ slug: string }>
+  searchParams: Promise<{ tab?: string }>
 }) {
-  const supabase = createClient()
+  const { slug } = await params
+  const { tab } = await searchParams
+  const supabase = await createClient()
 
   // Auth check
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  if (!user) redirect(`/auth?next=/g/${params.slug}/admin/events`)
+  if (!user) redirect(`/auth?next=/g/${slug}/admin/events`)
 
   // Group fetch
   const { data: group } = await supabase
     .from('groups')
     .select('id, name, slug, primary_colour')
-    .eq('slug', params.slug)
+    .eq('slug', slug)
     .maybeSingle()
   if (!group) redirect('/home')
 
@@ -51,15 +56,15 @@ export default async function AdminEventsPage({
   const isAdmin =
     membership?.status === 'approved' &&
     (membership.role === 'super_admin' || membership.role === 'co_admin')
-  if (!isAdmin) redirect(`/g/${params.slug}`)
+  if (!isAdmin) redirect(`/g/${slug}`)
 
   const now = new Date().toISOString()
-  const activeTab = searchParams.tab ?? 'upcoming'
+  const activeTab = tab ?? 'upcoming'
 
   // Fetch events
   let eventsQuery = supabase
     .from('events')
-    .select('id, title, starts_at, ends_at, location, max_capacity, cover_url, created_at')
+    .select('id, title, starts_at, ends_at, location, max_capacity, cover_url, created_at, event_type, price_amount, total_cost')
     .eq('group_id', group.id)
 
   if (activeTab === 'upcoming') {
@@ -85,7 +90,7 @@ export default async function AdminEventsPage({
         .from('guest_rsvps')
         .select('event_id')
         .in('event_id', eventIds)
-        .in('status', ['going', 'maybe']),
+        .eq('status', 'confirmed'),
     ])
     for (const r of memberRsvps.data ?? []) {
       rsvpCounts[r.event_id] = (rsvpCounts[r.event_id] ?? 0) + 1
@@ -218,7 +223,27 @@ export default async function AdminEventsPage({
                       <span className="text-base font-black leading-none">{start.getDate()}</span>
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 truncate">{ev.title}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-gray-900 truncate">{ev.title}</p>
+                        {(() => {
+                          const type = ev.event_type ?? 'free'
+                          if (type === 'paid') return (
+                            <span className="flex-shrink-0 text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                              £{(ev.price_amount ?? 0).toFixed(2)}
+                            </span>
+                          )
+                          if (type === 'shared_cost') return (
+                            <span className="flex-shrink-0 text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                              SHARED
+                            </span>
+                          )
+                          return (
+                            <span className="flex-shrink-0 text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                              FREE
+                            </span>
+                          )
+                        })()}
+                      </div>
                       <p className="text-xs text-gray-400 mt-0.5 truncate">
                         {ev.location ?? 'No location'}
                       </p>

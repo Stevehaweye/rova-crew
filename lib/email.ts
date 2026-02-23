@@ -1,8 +1,42 @@
 import { Resend } from 'resend'
+import RsvpConfirmationEmail, {
+  type RsvpConfirmationEmailProps,
+} from '@/app/emails/rsvp-confirmation'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
 const FROM_EMAIL = 'ROVA Crew <noreply@mypin.global>'
+
+// ─── RSVP Confirmation (React Email) ────────────────────────────────────────
+
+export async function sendRsvpConfirmationEmail(
+  to: string,
+  props: RsvpConfirmationEmailProps
+): Promise<{ success: true } | { success: false; error: string }> {
+  try {
+    const { error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to,
+      replyTo: FROM_EMAIL,
+      subject: `You're going to ${props.eventTitle}! Here's your check-in code.`,
+      react: RsvpConfirmationEmail(props),
+    })
+
+    if (error) {
+      console.error('[email] RSVP confirmation error:', error)
+      return { success: false, error: error.message }
+    }
+
+    return { success: true }
+  } catch (err) {
+    const message =
+      err && typeof err === 'object' && 'message' in err
+        ? (err as { message: string }).message
+        : 'Failed to send email'
+    console.error('[email] RSVP confirmation error:', err)
+    return { success: false, error: message }
+  }
+}
 
 // ─── Shared Layout ───────────────────────────────────────────────────────────
 

@@ -16,14 +16,15 @@ interface GroupProps {
   slug: string
   logoUrl: string | null
   primaryColour: string
+  hasStripeAccount: boolean
 }
 
-type EventType = 'free' | 'paid' | 'shared_cost'
+type PaymentType = 'free' | 'fixed' | 'shared_cost'
 
 interface EventFormData {
   title: string
   description: string
-  eventType: EventType
+  paymentType: PaymentType
   ticketPrice: string
   totalCost: string
   minParticipants: string
@@ -50,10 +51,10 @@ for (let h = 6; h < 24; h++) {
   }
 }
 
-const EVENT_TYPES: { key: EventType; emoji: string; label: string; desc: string }[] = [
-  { key: 'free', emoji: '🎉', label: 'FREE', desc: 'No charge. Open to all members.' },
-  { key: 'paid', emoji: '🎟️', label: 'PAID', desc: 'Set a ticket price per person.' },
-  { key: 'shared_cost', emoji: '🤝', label: 'SHARED COST', desc: 'Split total cost equally. Price drops as people join.' },
+const PAYMENT_TYPES: { key: PaymentType; label: string; sub: string }[] = [
+  { key: 'free', label: 'Free', sub: 'No payment required to RSVP' },
+  { key: 'fixed', label: 'Paid ticket', sub: 'Each person pays a set price' },
+  { key: 'shared_cost', label: 'Split the cost', sub: 'Total cost divided equally among attendees' },
 ]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -143,6 +144,38 @@ function Spinner() {
   )
 }
 
+function GiftIcon({ className = 'w-6 h-6' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.25v8.25a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 1 0 9.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1 1 14.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125h-18c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
+    </svg>
+  )
+}
+
+function TicketIcon({ className = 'w-6 h-6' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 0 1 0 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 0 1 0-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375Z" />
+    </svg>
+  )
+}
+
+function UsersGroupIcon({ className = 'w-6 h-6' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
+    </svg>
+  )
+}
+
+function StripeLinkIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+    </svg>
+  )
+}
+
 // ─── Micro-components ─────────────────────────────────────────────────────────
 
 function SectionHeader({ n, title, sub }: { n: string; title: string; sub: string }) {
@@ -217,23 +250,30 @@ function Toggle({
   )
 }
 
-// ─── Event Type Card ──────────────────────────────────────────────────────────
+// ─── Payment Type Card ───────────────────────────────────────────────────────
 
-function EventTypeCard({
-  emoji,
+const PAYMENT_ICONS: Record<PaymentType, (props: { className?: string }) => React.ReactElement> = {
+  free: GiftIcon,
+  fixed: TicketIcon,
+  shared_cost: UsersGroupIcon,
+}
+
+function PaymentTypeCard({
+  type,
   label,
-  desc,
+  sub,
   active,
   colour,
   onClick,
 }: {
-  emoji: string
+  type: PaymentType
   label: string
-  desc: string
+  sub: string
   active: boolean
   colour: string
   onClick: () => void
 }) {
+  const Icon = PAYMENT_ICONS[type]
   return (
     <button
       type="button"
@@ -241,23 +281,30 @@ function EventTypeCard({
       className="flex-1 min-w-[140px] rounded-2xl border-2 p-5 text-left transition-all duration-200 hover:shadow-md active:scale-[0.98]"
       style={{
         borderColor: active ? colour : '#E5E7EB',
-        backgroundColor: active ? colour + '0A' : '#fff',
+        backgroundColor: active ? colour + '08' : '#fff',
         boxShadow: active ? `0 0 0 1px ${colour}40` : undefined,
       }}
     >
-      <span className="text-3xl block mb-3">{emoji}</span>
+      <div
+        className="w-10 h-10 rounded-xl flex items-center justify-center mb-3"
+        style={{ backgroundColor: active ? colour + '18' : '#F3F4F6' }}
+      >
+        <Icon className={`w-5 h-5 ${active ? '' : 'text-gray-400'}`} />
+      </div>
       <p
-        className="text-sm font-black tracking-wide"
+        className="text-sm font-bold"
         style={{ color: active ? colour : '#374151' }}
       >
         {label}
       </p>
-      <p className="text-xs text-gray-500 mt-1 leading-snug">{desc}</p>
+      <p className="text-xs text-gray-500 mt-1 leading-snug">{sub}</p>
       {active && (
-        <div
-          className="mt-3 w-6 h-1 rounded-full"
-          style={{ backgroundColor: colour }}
-        />
+        <div className="mt-3 flex items-center gap-1.5">
+          <div className="w-4 h-4 rounded-full border-2 flex items-center justify-center" style={{ borderColor: colour }}>
+            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: colour }} />
+          </div>
+          <span className="text-[10px] font-semibold" style={{ color: colour }}>Selected</span>
+        </div>
       )}
     </button>
   )
@@ -361,9 +408,9 @@ function LivePreview({
 
   const typeChip = {
     free: { bg: '#059669', label: 'FREE' },
-    paid: { bg: '#D97706', label: 'PAID' },
-    shared_cost: { bg: '#2563EB', label: 'SHARED COST' },
-  }[form.eventType]
+    fixed: { bg: '#D97706', label: form.ticketPrice ? `£${parseFloat(form.ticketPrice).toFixed(2)}` : 'PAID' },
+    shared_cost: { bg: '#2563EB', label: 'SPLIT COST' },
+  }[form.paymentType]
 
   const capacityText = form.capacityEnabled && form.capacity
     ? `${form.capacity} spots available`
@@ -505,7 +552,7 @@ export default function EventForm({
   const [form, setForm] = useState<EventFormData>({
     title: '',
     description: '',
-    eventType: 'free',
+    paymentType: 'free',
     ticketPrice: '',
     totalCost: '',
     minParticipants: '',
@@ -583,6 +630,24 @@ export default function EventForm({
       if (end <= start) errs.end = 'End time must be after start time.'
     }
 
+    if (form.paymentType === 'fixed') {
+      const price = parseFloat(form.ticketPrice)
+      if (!form.ticketPrice || isNaN(price) || price < 1) {
+        errs.ticketPrice = 'Price must be at least £1.00.'
+      }
+    }
+
+    if (form.paymentType === 'shared_cost') {
+      const cost = parseFloat(form.totalCost)
+      if (!form.totalCost || isNaN(cost) || cost <= 0) {
+        errs.totalCost = 'Total cost must be greater than 0.'
+      }
+      const minP = parseInt(form.minParticipants)
+      if (!form.minParticipants || isNaN(minP) || minP < 2) {
+        errs.minParticipants = 'Minimum participants must be at least 2.'
+      }
+    }
+
     setErrors(errs)
     if (Object.keys(errs).length > 0) return
 
@@ -611,7 +676,7 @@ export default function EventForm({
       const startsAt = combineDateAndTime(form.startDate!, form.startTime).toISOString()
       const endsAt = combineDateAndTime(form.endDate!, form.endTime).toISOString()
 
-      const { error: eventErr } = await supabase
+      const { data: eventData, error: eventErr } = await supabase
         .from('events')
         .insert({
           group_id: group.id,
@@ -619,15 +684,39 @@ export default function EventForm({
           title: form.title.trim(),
           description: form.description.trim() || null,
           location: form.locationName.trim() || null,
+          maps_url: form.mapsUrl.trim() || null,
           starts_at: startsAt,
           ends_at: endsAt,
           cover_url: coverUrl,
           max_capacity: form.capacityEnabled && form.capacity ? parseInt(form.capacity) : null,
+          payment_type: form.paymentType,
+          price_pence: form.paymentType === 'fixed' ? Math.round(parseFloat(form.ticketPrice) * 100) : null,
+          total_cost_pence: form.paymentType === 'shared_cost' ? Math.round(parseFloat(form.totalCost) * 100) : null,
+          min_participants: form.paymentType === 'shared_cost' ? parseInt(form.minParticipants) : null,
+          allow_guest_rsvp: form.allowGuests,
         })
         .select('id')
         .single()
 
       if (eventErr) throw eventErr
+
+      // Create Stripe Product + Price for fixed-price events
+      if (eventData && form.paymentType === 'fixed' && group.hasStripeAccount) {
+        try {
+          await fetch('/api/stripe/create-product', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              eventId: eventData.id,
+              title: form.title.trim(),
+              priceAmount: parseFloat(form.ticketPrice),
+              groupName: group.name,
+            }),
+          })
+        } catch (err) {
+          console.error('[event-form] Stripe product creation error:', err)
+        }
+      }
 
       router.push(`/g/${group.slug}/admin`)
     } catch (err: unknown) {
@@ -685,108 +774,159 @@ export default function EventForm({
           <form onSubmit={handleSubmit} noValidate>
 
             {/* ── Section 01: Event Basics ──────────────────────────── */}
-            <SectionHeader n="01" title="Event Basics" sub="What kind of event is this?" />
+            <SectionHeader n="01" title="Event Basics" sub="Give your event a name" />
+
+            <div>
+              <FieldLabel required>Event title</FieldLabel>
+              <input
+                type="text"
+                value={form.title}
+                onChange={(e) => {
+                  patch({ title: e.target.value })
+                  if (errors.title) setErrors((prev) => ({ ...prev, title: '' }))
+                }}
+                placeholder="Give your event a great name..."
+                className={[
+                  'w-full px-4 py-4 rounded-xl border text-gray-900 text-lg font-semibold placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-[#0D7377] focus:border-transparent transition',
+                  errors.title ? 'border-red-300 bg-red-50/50' : 'border-gray-200',
+                ].join(' ')}
+              />
+              <FieldError msg={errors.title} />
+            </div>
+
+            <Divider />
+
+            {/* ── Section 02: Payment ────────────────────────────────── */}
+            <SectionHeader n="02" title="Payment" sub="How will attendees pay?" />
 
             <div className="space-y-6">
-              {/* Title */}
-              <div>
-                <FieldLabel required>Event title</FieldLabel>
-                <input
-                  type="text"
-                  value={form.title}
-                  onChange={(e) => {
-                    patch({ title: e.target.value })
-                    if (errors.title) setErrors((prev) => ({ ...prev, title: '' }))
-                  }}
-                  placeholder="Give your event a great name..."
-                  className={[
-                    'w-full px-4 py-4 rounded-xl border text-gray-900 text-lg font-semibold placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-[#0D7377] focus:border-transparent transition',
-                    errors.title ? 'border-red-300 bg-red-50/50' : 'border-gray-200',
-                  ].join(' ')}
-                />
-                <FieldError msg={errors.title} />
+              {/* Payment type cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {PAYMENT_TYPES.map((t) => (
+                  <PaymentTypeCard
+                    key={t.key}
+                    type={t.key}
+                    label={t.label}
+                    sub={t.sub}
+                    active={form.paymentType === t.key}
+                    colour={colour}
+                    onClick={() => patch({ paymentType: t.key })}
+                  />
+                ))}
               </div>
 
-              {/* Event type cards */}
-              <div>
-                <FieldLabel>Event type</FieldLabel>
-                <div className="flex gap-3 flex-wrap">
-                  {EVENT_TYPES.map((t) => (
-                    <EventTypeCard
-                      key={t.key}
-                      emoji={t.emoji}
-                      label={t.label}
-                      desc={t.desc}
-                      active={form.eventType === t.key}
-                      colour={colour}
-                      onClick={() => patch({ eventType: t.key })}
-                    />
-                  ))}
+              {/* Stripe Connect banner */}
+              {form.paymentType !== 'free' && !group.hasStripeAccount && (
+                <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <TicketIcon className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-amber-900">Connect Stripe to enable paid events</p>
+                    <p className="text-xs text-amber-700 mt-0.5">You need a Stripe account to collect payments from attendees.</p>
+                    <button
+                      type="button"
+                      className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-200/60 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      <StripeLinkIcon />
+                      Connect Stripe &rarr;
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* Conditional: PAID fields */}
-              {form.eventType === 'paid' && (
-                <div className="bg-amber-50 rounded-xl border border-amber-200 p-5 space-y-4">
+              {/* Conditional: FIXED PRICE fields */}
+              {form.paymentType === 'fixed' && (
+                <div className="bg-amber-50/60 rounded-xl border border-amber-200 p-5 space-y-4">
                   <div>
-                    <FieldLabel>Ticket price</FieldLabel>
+                    <FieldLabel required>Price per person (GBP)</FieldLabel>
                     <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">£</span>
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">£</span>
                       <input
                         type="number"
                         step="0.01"
-                        min="0"
+                        min="1.00"
                         value={form.ticketPrice}
-                        onChange={(e) => patch({ ticketPrice: e.target.value })}
+                        onChange={(e) => {
+                          patch({ ticketPrice: e.target.value })
+                          if (errors.ticketPrice) setErrors((prev) => ({ ...prev, ticketPrice: '' }))
+                        }}
                         placeholder="0.00"
-                        className="w-full pl-8 pr-4 py-3 rounded-xl border border-amber-200 text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent"
+                        className={`w-full pl-8 pr-4 py-3 rounded-xl border text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent ${errors.ticketPrice ? 'border-red-300 bg-red-50/50' : 'border-amber-200'}`}
                       />
                     </div>
+                    <FieldError msg={errors.ticketPrice} />
                   </div>
-                  <p className="text-xs text-amber-700 flex items-center gap-1.5">
-                    <span>🔒</span> Stripe payment setup coming in Week 3. For now, this will save as free.
+                  <p className="text-xs text-amber-700">
+                    Attendees will pay via Stripe Checkout when they RSVP.
                   </p>
                 </div>
               )}
 
               {/* Conditional: SHARED COST fields */}
-              {form.eventType === 'shared_cost' && (
-                <div className="bg-blue-50 rounded-xl border border-blue-200 p-5 space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
+              {form.paymentType === 'shared_cost' && (
+                <div className="bg-blue-50/60 rounded-xl border border-blue-200 p-5 space-y-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <FieldLabel>Total cost</FieldLabel>
+                      <FieldLabel required>Total cost (GBP)</FieldLabel>
                       <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-medium">£</span>
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">£</span>
                         <input
                           type="number"
                           step="0.01"
                           min="0"
                           value={form.totalCost}
-                          onChange={(e) => patch({ totalCost: e.target.value })}
-                          placeholder="0.00"
-                          className="w-full pl-8 pr-4 py-3 rounded-xl border border-blue-200 text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                          onChange={(e) => {
+                            patch({ totalCost: e.target.value })
+                            if (errors.totalCost) setErrors((prev) => ({ ...prev, totalCost: '' }))
+                          }}
+                          placeholder="e.g. 60.00"
+                          className={`w-full pl-8 pr-4 py-3 rounded-xl border text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent ${errors.totalCost ? 'border-red-300 bg-red-50/50' : 'border-blue-200'}`}
                         />
                       </div>
+                      <FieldError msg={errors.totalCost} />
                     </div>
                     <div>
-                      <FieldLabel>Min. participants</FieldLabel>
+                      <FieldLabel required>Min. participants</FieldLabel>
                       <input
                         type="number"
                         min="2"
                         value={form.minParticipants}
-                        onChange={(e) => patch({ minParticipants: e.target.value })}
-                        placeholder="e.g. 5"
-                        className="w-full px-4 py-3 rounded-xl border border-blue-200 text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
+                        onChange={(e) => {
+                          patch({ minParticipants: e.target.value })
+                          if (errors.minParticipants) setErrors((prev) => ({ ...prev, minParticipants: '' }))
+                        }}
+                        placeholder="e.g. 4"
+                        className={`w-full px-4 py-3 rounded-xl border text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent ${errors.minParticipants ? 'border-red-300 bg-red-50/50' : 'border-blue-200'}`}
                       />
+                      <FieldError msg={errors.minParticipants} />
                     </div>
                   </div>
-                  {form.totalCost && form.minParticipants && (
-                    <p className="text-sm text-blue-700 font-medium">
-                      ≈ £{(parseFloat(form.totalCost) / parseInt(form.minParticipants)).toFixed(2)} per person (with {form.minParticipants} people)
-                    </p>
-                  )}
-                  <p className="text-xs text-blue-700 flex items-center gap-1.5">
-                    <span>🔒</span> Stripe payment setup coming in Week 3. For now, this will save as free.
+
+                  {/* Live price preview */}
+                  {form.totalCost && form.minParticipants && (() => {
+                    const total = parseFloat(form.totalCost)
+                    const min = parseInt(form.minParticipants)
+                    if (isNaN(total) || isNaN(min) || min < 2 || total <= 0) return null
+                    const cap = form.capacityEnabled && form.capacity ? parseInt(form.capacity) : null
+                    const exampleCounts = [min, Math.ceil(min * 1.5), cap ?? min * 2].filter(
+                      (v, i, a) => v >= min && a.indexOf(v) === i
+                    ).slice(0, 3)
+                    return (
+                      <div className="bg-white/70 rounded-lg border border-blue-100 p-3.5 space-y-1.5">
+                        <p className="text-xs font-semibold text-blue-800 mb-2">Price preview</p>
+                        {exampleCounts.map((n) => (
+                          <p key={n} className="text-sm text-blue-700">
+                            If <span className="font-bold">{n}</span> people RSVP:{' '}
+                            <span className="font-bold">£{(total / n).toFixed(2)}</span> each
+                          </p>
+                        ))}
+                      </div>
+                    )
+                  })()}
+
+                  <p className="text-xs text-blue-700">
+                    Price per person drops as more people RSVP. No upfront payment required.
                   </p>
                 </div>
               )}
@@ -794,8 +934,8 @@ export default function EventForm({
 
             <Divider />
 
-            {/* ── Section 02: Date & Time ───────────────────────────── */}
-            <SectionHeader n="02" title="Date & Time" sub="When is it happening?" />
+            {/* ── Section 03: Date & Time ───────────────────────────── */}
+            <SectionHeader n="03" title="Date & Time" sub="When is it happening?" />
 
             <div className="space-y-6">
               <DatePickerField
@@ -842,8 +982,8 @@ export default function EventForm({
 
             <Divider />
 
-            {/* ── Section 03: Location ──────────────────────────────── */}
-            <SectionHeader n="03" title="Location" sub="Where should people meet?" />
+            {/* ── Section 04: Location ──────────────────────────────── */}
+            <SectionHeader n="04" title="Location" sub="Where should people meet?" />
 
             <div className="space-y-4">
               <div>
@@ -882,8 +1022,8 @@ export default function EventForm({
 
             <Divider />
 
-            {/* ── Section 04: Details ───────────────────────────────── */}
-            <SectionHeader n="04" title="Details" sub="Describe the event and set limits" />
+            {/* ── Section 05: Details ───────────────────────────────── */}
+            <SectionHeader n="05" title="Details" sub="Describe the event and set limits" />
 
             <div className="space-y-6">
               {/* Description */}
@@ -1006,8 +1146,8 @@ export default function EventForm({
 
             <Divider />
 
-            {/* ── Section 05: Visibility ────────────────────────────── */}
-            <SectionHeader n="05" title="Visibility" sub="Who can see and RSVP?" />
+            {/* ── Section 06: Visibility ────────────────────────────── */}
+            <SectionHeader n="06" title="Visibility" sub="Who can see and RSVP?" />
 
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 divide-y divide-gray-100">
               <Toggle

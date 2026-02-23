@@ -509,15 +509,16 @@ function HallOfFame({ colour }: { colour: string }) {
 export default async function GroupPage({
   params,
 }: {
-  params: { slug: string }
+  params: Promise<{ slug: string }>
 }) {
-  const supabase = createClient()
+  const { slug } = await params
+  const supabase = await createClient()
 
   // Fetch group
   const { data: group } = await supabase
     .from('groups')
     .select('*')
-    .eq('slug', params.slug)
+    .eq('slug', slug)
     .maybeSingle()
 
   if (!group) return <NotFoundView />

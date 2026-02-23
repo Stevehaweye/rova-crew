@@ -502,7 +502,7 @@ function HasGroupsContent({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function HomePage() {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   const {
     data: { user },

@@ -7,6 +7,8 @@ import dynamic from 'next/dynamic'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 
+const SharedCostTicker = dynamic(() => import('@/components/events/SharedCostTicker'), { ssr: false })
+
 const EventChat = dynamic(() => import('@/components/EventChat'), {
   loading: () => (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -36,6 +38,15 @@ interface EventData {
   coverUrl: string | null
   maxCapacity: number | null
   createdBy: string
+  eventType: 'free' | 'paid' | 'shared_cost'
+  priceAmount: number | null
+  totalCost: number | null
+  minParticipants: number | null
+  stripePriceId: string | null
+  paymentType: 'free' | 'fixed' | 'shared_cost'
+  totalCostPence: number | null
+  allowGuestRsvp: boolean
+  pricePence: number | null
 }
 
 interface GroupData {
@@ -55,8 +66,9 @@ interface MemberRsvp {
 
 interface GuestRsvp {
   id: string
-  name: string
-  status: 'going' | 'maybe'
+  firstName: string
+  lastName: string
+  status: 'confirmed'
   createdAt: string
 }
 
@@ -76,7 +88,8 @@ interface Props {
   group: GroupData
   initialMemberRsvps: MemberRsvp[]
   initialGuestRsvps: GuestRsvp[]
-  totalGoingCount: number
+  memberGoingCount: number
+  guestGoingCount: number
   currentUser: CurrentUserProfile | null
   currentUserRsvp: { id: string; status: 'going' | 'maybe' | 'not_going' } | null
 }
@@ -229,11 +242,13 @@ function Hero({
 function InfoBar({
   event,
   colour,
-  goingCount,
+  memberCount,
+  guestCount,
 }: {
   event: EventData
   colour: string
-  goingCount: number
+  memberCount: number
+  guestCount: number
 }) {
   const startDate = new Date(event.startsAt)
   const endDate = new Date(event.endsAt)
@@ -263,19 +278,42 @@ function InfoBar({
           <div className="flex items-center gap-2 text-sm text-gray-700">
             <UsersIcon />
             <span>
-              <strong className="text-gray-900">{goingCount}</strong> going
+              {guestCount > 0 ? (
+                <>
+                  <strong className="text-gray-900">{memberCount}</strong>
+                  {memberCount === 1 ? ' member' : ' members'}
+                  <span className="text-gray-400"> + </span>
+                  <strong className="text-gray-900">{guestCount}</strong>
+                  {guestCount === 1 ? ' guest' : ' guests'}
+                </>
+              ) : (
+                <>
+                  <strong className="text-gray-900">{memberCount}</strong> going
+                </>
+              )}
               {event.maxCapacity && (
                 <span className="text-gray-400"> / {event.maxCapacity}</span>
               )}
             </span>
           </div>
 
-          <span
-            className="px-3 py-1 rounded-full text-[10px] font-black tracking-wider text-white"
-            style={{ backgroundColor: '#059669' }}
-          >
-            FREE
-          </span>
+          {(() => {
+            const totalCount = memberCount + guestCount
+            const badge =
+              event.paymentType === 'fixed' && event.pricePence
+                ? { bg: '#D97706', label: `\u00a3${(event.pricePence / 100).toFixed(2)}` }
+                : event.paymentType === 'shared_cost' && event.totalCostPence && event.minParticipants
+                  ? { bg: '#2563EB', label: `\u00a3${(event.totalCostPence / 100 / Math.max(totalCount, event.minParticipants)).toFixed(2)} each` }
+                  : { bg: '#059669', label: 'FREE' }
+            return (
+              <span
+                className="px-3 py-1 rounded-full text-[10px] font-black tracking-wider text-white"
+                style={{ backgroundColor: badge.bg }}
+              >
+                {badge.label}
+              </span>
+            )
+          })()}
         </div>
 
         {/* Capacity bar */}
@@ -285,13 +323,13 @@ function InfoBar({
               <div
                 className="h-full rounded-full transition-all duration-500"
                 style={{
-                  width: `${Math.min((goingCount / event.maxCapacity) * 100, 100)}%`,
+                  width: `${Math.min(((memberCount + guestCount) / event.maxCapacity) * 100, 100)}%`,
                   backgroundColor: colour,
                 }}
               />
             </div>
             <p className="text-xs text-gray-400 mt-1">
-              {Math.max(event.maxCapacity - goingCount, 0)} spot{event.maxCapacity - goingCount !== 1 ? 's' : ''} remaining
+              {Math.max(event.maxCapacity - memberCount - guestCount, 0)} spot{event.maxCapacity - memberCount - guestCount !== 1 ? 's' : ''} remaining
             </p>
           </div>
         )}
@@ -324,9 +362,9 @@ function SocialSnowball({
     })),
     ...guestRsvps.map((r) => ({
       id: r.id,
-      name: r.name,
+      name: `${r.firstName} ${r.lastName[0]}.`,
       avatarUrl: null as string | null,
-      status: r.status,
+      status: 'going' as const,
       isGuest: true,
     })),
   ]
@@ -401,37 +439,163 @@ function SocialSnowball({
   )
 }
 
-// ─── RSVP Card (Member) ─────────────────────────────────────────────────────
+// ─── Guest Confirmation (two-stage) ─────────────────────────────────────────
+
+function GuestConfirmation({
+  eventTitle,
+  guestEmail,
+  groupName,
+  groupSlug,
+  colour,
+  onDismiss,
+}: {
+  eventTitle: string
+  guestEmail: string
+  groupName: string
+  groupSlug: string
+  colour: string
+  onDismiss: () => void
+}) {
+  const [stage, setStage] = useState<1 | 2>(1)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setStage(2), 2000)
+    return () => clearTimeout(timer)
+  }, [])
+
+  const signUpUrl = `/auth?next=/g/${groupSlug}&email=${encodeURIComponent(guestEmail)}`
+
+  return (
+    <div className="overflow-hidden">
+      {/* Stage 1 — Confirmation */}
+      <div
+        className="transition-all duration-500 ease-in-out"
+        style={{
+          maxHeight: stage === 1 ? '300px' : '0px',
+          opacity: stage === 1 ? 1 : 0,
+          transform: stage === 1 ? 'translateY(0)' : 'translateY(-8px)',
+        }}
+      >
+        <div className="text-center py-6">
+          {/* Animated tick */}
+          <div className="w-14 h-14 rounded-full mx-auto mb-4 flex items-center justify-center bg-emerald-500">
+            <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="m4.5 12.75 6 6 9-13.5"
+                style={{
+                  strokeDasharray: 30,
+                  strokeDashoffset: 0,
+                  animation: 'guest-tick-draw 0.5s cubic-bezier(0.65, 0, 0.35, 1) 0.15s both',
+                }}
+              />
+            </svg>
+          </div>
+          <p className="font-bold text-gray-900 text-sm leading-snug">
+            You&apos;re on the list for {eventTitle}!
+          </p>
+          <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+            A confirmation email is on its way to{' '}
+            <span className="font-medium text-gray-700">{guestEmail}</span>.
+          </p>
+        </div>
+      </div>
+
+      {/* Stage 2 — Conversion prompt */}
+      <div
+        className="transition-all duration-500 ease-out"
+        style={{
+          maxHeight: stage === 2 ? '400px' : '0px',
+          opacity: stage === 2 ? 1 : 0,
+          transform: stage === 2 ? 'translateY(0)' : 'translateY(12px)',
+        }}
+      >
+        <div className="text-center py-5">
+          <div className="w-10 h-10 rounded-full mx-auto mb-3 bg-gray-100 flex items-center justify-center">
+            <svg className="w-5 h-5 text-gray-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
+            </svg>
+          </div>
+          <p className="font-bold text-gray-900 text-sm mb-1.5">
+            Want to see who else is going?
+          </p>
+          <p className="text-xs text-gray-500 leading-relaxed mb-5 px-1">
+            Members see the full attendee list, group chat, and upcoming events. It takes 30 seconds.
+          </p>
+          <Link
+            href={signUpUrl}
+            className="block w-full py-3 rounded-xl text-white font-bold text-sm transition-opacity hover:opacity-90 text-center"
+            style={{ backgroundColor: colour }}
+          >
+            Join {groupName} &rarr;
+          </Link>
+          <button
+            onClick={onDismiss}
+            className="mt-3 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            No thanks, just attending this event
+          </button>
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes guest-tick-draw {
+          from { stroke-dashoffset: 30; }
+          to { stroke-dashoffset: 0; }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+// ─── RSVP Card (Two-path: Member + Guest) ───────────────────────────────────
 
 function RsvpCard({
   event,
+  group,
   colour,
   currentUser,
   rsvpStatus,
   onRsvp,
+  guestExpanded,
+  onToggleGuest,
   guestStatus,
-  guestName,
+  guestDismissed,
+  onGuestDismiss,
+  guestFirstName,
+  guestLastName,
   guestEmail,
-  onGuestNameChange,
+  onGuestFirstNameChange,
+  onGuestLastNameChange,
   onGuestEmailChange,
   onGuestRsvp,
   guestError,
   guestFieldErrors,
 }: {
   event: EventData
+  group: GroupData
   colour: string
-  currentUser: { id: string } | null
+  currentUser: CurrentUserProfile | null
   rsvpStatus: RsvpStatus
   onRsvp: (status: 'going' | 'maybe' | 'not_going') => void
+  guestExpanded: boolean
+  onToggleGuest: () => void
   guestStatus: GuestRsvpStatus
-  guestName: string
+  guestDismissed: boolean
+  onGuestDismiss: () => void
+  guestFirstName: string
+  guestLastName: string
   guestEmail: string
-  onGuestNameChange: (v: string) => void
+  onGuestFirstNameChange: (v: string) => void
+  onGuestLastNameChange: (v: string) => void
   onGuestEmailChange: (v: string) => void
   onGuestRsvp: () => void
   guestError: string
-  guestFieldErrors: { name?: string; email?: string }
+  guestFieldErrors: { firstName?: string; lastName?: string; email?: string }
 }) {
+  const priceLabel = event.pricePence ? `\u00a3${(event.pricePence / 100).toFixed(2)}` : null
+
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-xl p-5">
       <h3 className="text-sm font-bold text-gray-900 mb-1">RSVP</h3>
@@ -439,57 +603,103 @@ function RsvpCard({
         {format(new Date(event.startsAt), 'EEE d MMM · h:mm a')}
       </p>
 
-      {/* Logged-in member RSVP */}
+      {/* ── Member section ─────────────────────────────────────── */}
       {currentUser ? (
-        <div className="space-y-2.5">
-          {(['going', 'maybe', 'not_going'] as const).map((status) => {
-            const active = rsvpStatus === status
-            const label = status === 'going' ? "I'm going" : status === 'maybe' ? 'Maybe' : "Can't make it"
-            const emoji = status === 'going' ? '🎉' : status === 'maybe' ? '🤔' : '😢'
+        event.paymentType === 'fixed' && priceLabel ? (
+          <div className="space-y-2.5">
+            <button
+              onClick={() => onRsvp('going')}
+              disabled={rsvpStatus === 'loading' || rsvpStatus === 'going'}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl text-white font-bold text-sm transition-all disabled:opacity-50"
+              style={{ backgroundColor: rsvpStatus === 'going' ? '#059669' : colour }}
+            >
+              {rsvpStatus === 'loading' ? (
+                <Spinner />
+              ) : rsvpStatus === 'going' ? (
+                <><CheckIcon /> Ticket purchased</>
+              ) : (
+                <>Buy ticket &mdash; {priceLabel}</>
+              )}
+            </button>
+            {rsvpStatus === 'error' && (
+              <p className="text-red-500 text-xs mt-1">Something went wrong. Try again.</p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {(['going', 'maybe', 'not_going'] as const).map((status) => {
+              const active = rsvpStatus === status
+              const label = status === 'going' ? "I'm going" : status === 'maybe' ? 'Maybe' : "Can't make it"
+              const emoji = status === 'going' ? '🎉' : status === 'maybe' ? '🤔' : '😢'
 
-            return (
-              <button
-                key={status}
-                onClick={() => onRsvp(status)}
-                disabled={rsvpStatus === 'loading'}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-sm font-semibold transition-all duration-200 disabled:opacity-50"
-                style={{
-                  borderColor: active ? colour : '#E5E7EB',
-                  backgroundColor: active ? colour + '0A' : '#fff',
-                  color: active ? colour : '#374151',
-                }}
-              >
-                {rsvpStatus === 'loading' ? (
-                  <Spinner />
-                ) : active ? (
-                  <CheckIcon />
-                ) : (
-                  <span className="text-base">{emoji}</span>
-                )}
-                {label}
-              </button>
-            )
-          })}
+              return (
+                <button
+                  key={status}
+                  onClick={() => onRsvp(status)}
+                  disabled={rsvpStatus === 'loading'}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-sm font-semibold transition-all duration-200 disabled:opacity-50"
+                  style={{
+                    borderColor: active ? colour : '#E5E7EB',
+                    backgroundColor: active ? colour + '0A' : '#fff',
+                    color: active ? colour : '#374151',
+                  }}
+                >
+                  {rsvpStatus === 'loading' ? (
+                    <Spinner />
+                  ) : active ? (
+                    <CheckIcon />
+                  ) : (
+                    <span className="text-base">{emoji}</span>
+                  )}
+                  {label}
+                </button>
+              )
+            })}
 
-          {rsvpStatus === 'error' && (
-            <p className="text-red-500 text-xs mt-1">Something went wrong. Try again.</p>
-          )}
-        </div>
+            {rsvpStatus === 'error' && (
+              <p className="text-red-500 text-xs mt-1">Something went wrong. Try again.</p>
+            )}
+          </div>
+        )
       ) : (
-        /* Guest RSVP form */
-        <div className="space-y-3">
+        <Link
+          href={`/auth?next=/events/${event.id}`}
+          className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl text-white font-bold text-sm transition-opacity hover:opacity-90"
+          style={{ backgroundColor: colour }}
+        >
+          Sign in to RSVP &rarr;
+        </Link>
+      )}
+
+      {/* ── Divider + Guest section ─────────────────────────────── */}
+      {event.allowGuestRsvp && (
+        <>
+          <div className="flex items-center gap-3 my-5">
+            <div className="flex-1 h-px bg-gray-200" />
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">or</span>
+            <div className="flex-1 h-px bg-gray-200" />
+          </div>
+
           {guestStatus === 'done' ? (
-            <div className="text-center py-5">
-              <div className="w-12 h-12 rounded-full mx-auto mb-3 flex items-center justify-center" style={{ backgroundColor: '#059669' }}>
-                <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" style={{ strokeDasharray: 30, strokeDashoffset: 0, transition: 'stroke-dashoffset 0.55s cubic-bezier(0.65, 0, 0.35, 1) 0.1s' }} />
-                </svg>
+            guestDismissed ? (
+              <div className="text-center py-4">
+                <div className="w-8 h-8 rounded-full mx-auto mb-2 bg-emerald-500 flex items-center justify-center">
+                  <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                  </svg>
+                </div>
+                <p className="text-xs text-gray-500">You&apos;re confirmed. See you there!</p>
               </div>
-              <p className="font-bold text-gray-900 text-sm">You&apos;re on the list, {guestName.split(' ')[0]}!</p>
-              <p className="text-xs text-gray-500 mt-2 leading-relaxed">
-                Check your email — your confirmation and check-in QR code are on their way.
-              </p>
-            </div>
+            ) : (
+              <GuestConfirmation
+                eventTitle={event.title}
+                guestEmail={guestEmail}
+                groupName={group.name}
+                groupSlug={group.slug}
+                colour={colour}
+                onDismiss={onGuestDismiss}
+              />
+            )
           ) : guestStatus === 'already_rsvped' ? (
             <div className="text-center py-5">
               <div className="text-3xl mb-2">📬</div>
@@ -498,23 +708,51 @@ function RsvpCard({
                 Check your inbox for the confirmation email with your QR code.
               </p>
             </div>
+          ) : !guestExpanded ? (
+            <button
+              onClick={onToggleGuest}
+              className="w-full flex items-center gap-2 px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-600 font-medium hover:bg-gray-50 transition-colors"
+            >
+              <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+              </svg>
+              Just want to come? RSVP as a guest
+              <svg className="w-3.5 h-3.5 text-gray-400 ml-auto" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+              </svg>
+            </button>
           ) : (
-            <>
+            <div className="space-y-3">
               <p className="text-xs text-gray-500">
                 RSVP as a guest — no account needed.
               </p>
-              <div>
-                <input
-                  type="text"
-                  value={guestName}
-                  onChange={(e) => onGuestNameChange(e.target.value)}
-                  placeholder="Your name"
-                  className={`w-full px-3.5 py-3 rounded-xl border text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition ${guestFieldErrors.name ? 'border-red-300 bg-red-50/50' : 'border-gray-200'}`}
-                  style={{ '--tw-ring-color': colour } as React.CSSProperties}
-                />
-                {guestFieldErrors.name && (
-                  <p className="text-red-500 text-xs mt-1">{guestFieldErrors.name}</p>
-                )}
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={guestFirstName}
+                    onChange={(e) => onGuestFirstNameChange(e.target.value)}
+                    placeholder="First name"
+                    className={`w-full px-3.5 py-3 rounded-xl border text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition ${guestFieldErrors.firstName ? 'border-red-300 bg-red-50/50' : 'border-gray-200'}`}
+                    style={{ '--tw-ring-color': colour } as React.CSSProperties}
+                  />
+                  {guestFieldErrors.firstName && (
+                    <p className="text-red-500 text-xs mt-1">{guestFieldErrors.firstName}</p>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={guestLastName}
+                    onChange={(e) => onGuestLastNameChange(e.target.value)}
+                    placeholder="Last name"
+                    className={`w-full px-3.5 py-3 rounded-xl border text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition ${guestFieldErrors.lastName ? 'border-red-300 bg-red-50/50' : 'border-gray-200'}`}
+                    style={{ '--tw-ring-color': colour } as React.CSSProperties}
+                  />
+                  {guestFieldErrors.lastName && (
+                    <p className="text-red-500 text-xs mt-1">{guestFieldErrors.lastName}</p>
+                  )}
+                </div>
               </div>
               <div>
                 <input
@@ -529,6 +767,11 @@ function RsvpCard({
                   <p className="text-red-500 text-xs mt-1">{guestFieldErrors.email}</p>
                 )}
               </div>
+              {event.paymentType === 'fixed' && priceLabel && (
+                <p className="text-xs text-gray-400 text-center">
+                  You&apos;ll pay {priceLabel} after submitting.
+                </p>
+              )}
               <button
                 onClick={onGuestRsvp}
                 disabled={guestStatus === 'loading'}
@@ -538,7 +781,7 @@ function RsvpCard({
                 {guestStatus === 'loading' ? (
                   <><Spinner /> Sending confirmation&hellip;</>
                 ) : (
-                  "Count me in \u2192"
+                  "I'm coming \u2192"
                 )}
               </button>
               {guestError && (
@@ -546,15 +789,9 @@ function RsvpCard({
                   <p className="text-red-600 text-xs">{guestError}</p>
                 </div>
               )}
-              <p className="text-[11px] text-gray-400 text-center">
-                Already have an account?{' '}
-                <Link href={`/auth?next=/events/${event.id}`} className="font-semibold" style={{ color: colour }}>
-                  Sign in
-                </Link>
-              </p>
-            </>
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
   )
@@ -601,7 +838,8 @@ export default function EventPageClient({
   group,
   initialMemberRsvps,
   initialGuestRsvps,
-  totalGoingCount,
+  memberGoingCount,
+  guestGoingCount,
   currentUser,
   currentUserRsvp,
 }: Props) {
@@ -612,7 +850,9 @@ export default function EventPageClient({
 
   const [memberRsvps, setMemberRsvps] = useState<MemberRsvp[]>(initialMemberRsvps)
   const [guestRsvps, setGuestRsvps] = useState<GuestRsvp[]>(initialGuestRsvps)
-  const [goingCount, setGoingCount] = useState(totalGoingCount)
+  const [memberCount, setMemberCount] = useState(memberGoingCount)
+  const [guestCount, setGuestCount] = useState(guestGoingCount)
+  const goingCount = memberCount + guestCount
 
   // Member RSVP state
   const [rsvpStatus, setRsvpStatus] = useState<RsvpStatus>(
@@ -621,10 +861,23 @@ export default function EventPageClient({
 
   // Guest RSVP state
   const [guestRsvpState, setGuestRsvpState] = useState<GuestRsvpStatus>('idle')
-  const [guestName, setGuestName] = useState('')
+  const [guestExpanded, setGuestExpanded] = useState(false)
+  const [guestDismissed, setGuestDismissed] = useState(false)
+  const [guestFirstName, setGuestFirstName] = useState('')
+  const [guestLastName, setGuestLastName] = useState('')
   const [guestEmail, setGuestEmail] = useState('')
   const [guestError, setGuestError] = useState('')
-  const [guestFieldErrors, setGuestFieldErrors] = useState<{ name?: string; email?: string }>({})
+  const [guestFieldErrors, setGuestFieldErrors] = useState<{ firstName?: string; lastName?: string; email?: string }>({})
+
+  // ── Payment success handler ───────────────────────────────────────────────
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('payment') === 'success') {
+      window.history.replaceState({}, '', `/events/${event.id}`)
+      router.refresh()
+    }
+  }, [event.id, router])
 
   // ── Supabase Realtime ──────────────────────────────────────────────────────
 
@@ -658,7 +911,7 @@ export default function EventPageClient({
               if (prev.some((r) => r.id === rsvp.id || r.userId === rsvp.userId)) return prev
               return [...prev, rsvp]
             })
-            setGoingCount((c) => c + 1)
+            setMemberCount((c) => c + 1)
           }
         }
       )
@@ -666,19 +919,20 @@ export default function EventPageClient({
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'guest_rsvps', filter: `event_id=eq.${event.id}` },
         (payload) => {
-          const newGuest = payload.new as { id: string; name: string; status: string; created_at: string }
-          if (newGuest.status === 'going' || newGuest.status === 'maybe') {
+          const newGuest = payload.new as { id: string; first_name: string; last_name: string; status: string; created_at: string }
+          if (newGuest.status === 'confirmed') {
             const rsvp: GuestRsvp = {
               id: newGuest.id,
-              name: newGuest.name,
-              status: newGuest.status as 'going' | 'maybe',
+              firstName: newGuest.first_name,
+              lastName: newGuest.last_name,
+              status: 'confirmed',
               createdAt: newGuest.created_at,
             }
             setGuestRsvps((prev) => {
               if (prev.some((r) => r.id === rsvp.id)) return prev
               return [...prev, rsvp]
             })
-            setGoingCount((c) => c + 1)
+            setGuestCount((c) => c + 1)
           }
         }
       )
@@ -698,6 +952,29 @@ export default function EventPageClient({
     }
 
     if (rsvpStatus === status) return // Already selected
+
+    // For PAID events, "going" triggers Stripe Checkout
+    if (event.paymentType === 'fixed' && status === 'going' && event.pricePence) {
+      setRsvpStatus('loading')
+      try {
+        const res = await fetch('/api/stripe/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ event_id: event.id, user_id: currentUser.id }),
+        })
+        const data = await res.json()
+        if (data.url) {
+          window.location.href = data.url
+          return
+        }
+        setRsvpStatus('error')
+      } catch (err) {
+        console.error('[rsvp] checkout error:', err)
+        setRsvpStatus('error')
+      }
+      return
+    }
+
     setRsvpStatus('loading')
 
     const supabase = createClient()
@@ -733,14 +1010,14 @@ export default function EventPageClient({
           },
         ]
       })
-      // Update going count if transitioning to going/maybe from idle or not_going
+      // Update member count if transitioning to going/maybe from idle or not_going
       if (rsvpStatus === 'idle' || rsvpStatus === 'not_going') {
-        setGoingCount((c) => c + 1)
+        setMemberCount((c) => c + 1)
       }
     } else if (status === 'not_going') {
       setMemberRsvps((prev) => prev.filter((r) => r.userId !== currentUser.id))
       if (rsvpStatus !== 'idle' && rsvpStatus !== 'not_going' && rsvpStatus !== 'error') {
-        setGoingCount((c) => Math.max(c - 1, 0))
+        setMemberCount((c) => Math.max(c - 1, 0))
       }
     }
 
@@ -752,9 +1029,12 @@ export default function EventPageClient({
 
   async function handleGuestRsvp() {
     // Client-side validation
-    const fieldErrs: { name?: string; email?: string } = {}
-    if (!guestName.trim() || guestName.trim().length < 2) {
-      fieldErrs.name = 'Name is required (min 2 characters).'
+    const fieldErrs: { firstName?: string; lastName?: string; email?: string } = {}
+    if (!guestFirstName.trim() || guestFirstName.trim().length < 1) {
+      fieldErrs.firstName = 'First name is required.'
+    }
+    if (!guestLastName.trim() || guestLastName.trim().length < 1) {
+      fieldErrs.lastName = 'Last name is required.'
     }
     if (!guestEmail.trim() || !EMAIL_RE.test(guestEmail.trim())) {
       fieldErrs.email = 'Please enter a valid email address.'
@@ -765,11 +1045,41 @@ export default function EventPageClient({
     setGuestRsvpState('loading')
     setGuestError('')
 
+    // For PAID events, redirect guests to Stripe Checkout
+    if (event.paymentType === 'fixed' && event.pricePence) {
+      try {
+        const res = await fetch('/api/stripe/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event_id: event.id,
+            guest_email: guestEmail.trim(),
+          }),
+        })
+        const data = await res.json()
+        if (data.url) {
+          window.location.href = data.url
+          return
+        }
+        setGuestError('Payment setup failed. Please try again.')
+        setGuestRsvpState('error')
+      } catch (err) {
+        console.error('[guest-rsvp] checkout error:', err)
+        setGuestError('Payment setup failed. Please try again.')
+        setGuestRsvpState('error')
+      }
+      return
+    }
+
     try {
       const res = await fetch(`/api/events/${event.id}/guest-rsvp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: guestName.trim(), email: guestEmail.trim() }),
+        body: JSON.stringify({
+          first_name: guestFirstName.trim(),
+          last_name: guestLastName.trim(),
+          email: guestEmail.trim(),
+        }),
       })
 
       const data = await res.json()
@@ -788,15 +1098,16 @@ export default function EventPageClient({
       // Optimistic update: add guest to the Who's Going list immediately
       const optimisticGuest: GuestRsvp = {
         id: data.guestRsvpId ?? crypto.randomUUID(),
-        name: guestName.trim(),
-        status: 'going',
+        firstName: guestFirstName.trim(),
+        lastName: guestLastName.trim(),
+        status: 'confirmed',
         createdAt: new Date().toISOString(),
       }
       setGuestRsvps((prev) => {
         if (prev.some((r) => r.id === optimisticGuest.id)) return prev
         return [...prev, optimisticGuest]
       })
-      setGoingCount((c) => c + 1)
+      setGuestCount((c) => c + 1)
       setGuestRsvpState('done')
     } catch (err) {
       console.error('[guest_rsvp] error:', err)
@@ -813,7 +1124,7 @@ export default function EventPageClient({
       <Hero event={event} group={group} colour={colour} />
 
       {/* Info bar */}
-      <InfoBar event={event} colour={colour} goingCount={goingCount} />
+      <InfoBar event={event} colour={colour} memberCount={memberCount} guestCount={guestCount} />
 
       {/* Main content */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-10 py-8">
@@ -830,6 +1141,45 @@ export default function EventPageClient({
                 </div>
               </div>
             )}
+
+            {/* Shared Cost Ticker — mobile only */}
+            {event.paymentType === 'shared_cost' && event.totalCostPence && event.minParticipants && (
+              <div className="lg:hidden">
+                <SharedCostTicker
+                  eventId={event.id}
+                  totalCostPence={event.totalCostPence}
+                  minParticipants={event.minParticipants}
+                  maxParticipants={event.maxCapacity ?? event.minParticipants * 3}
+                  currentRsvpCount={goingCount}
+                />
+              </div>
+            )}
+
+            {/* RSVP Card — mobile only (shows in sidebar on desktop) */}
+            <div className="lg:hidden">
+              <RsvpCard
+                event={event}
+                group={group}
+                colour={colour}
+                currentUser={currentUser}
+                rsvpStatus={rsvpStatus}
+                onRsvp={handleMemberRsvp}
+                guestExpanded={guestExpanded}
+                onToggleGuest={() => setGuestExpanded(true)}
+                guestStatus={guestRsvpState}
+                guestDismissed={guestDismissed}
+                onGuestDismiss={() => setGuestDismissed(true)}
+                guestFirstName={guestFirstName}
+                guestLastName={guestLastName}
+                guestEmail={guestEmail}
+                onGuestFirstNameChange={(v) => { setGuestFirstName(v); setGuestFieldErrors((p) => ({ ...p, firstName: undefined })) }}
+                onGuestLastNameChange={(v) => { setGuestLastName(v); setGuestFieldErrors((p) => ({ ...p, lastName: undefined })) }}
+                onGuestEmailChange={(v) => { setGuestEmail(v); setGuestFieldErrors((p) => ({ ...p, email: undefined })) }}
+                onGuestRsvp={handleGuestRsvp}
+                guestError={guestError}
+                guestFieldErrors={guestFieldErrors}
+              />
+            </div>
 
             {/* Social Snowball — mobile only (shows in sidebar on desktop) */}
             <div className="lg:hidden">
@@ -851,16 +1201,32 @@ export default function EventPageClient({
 
           {/* ── Right column (sticky sidebar) ────────────────────── */}
           <div className="hidden lg:block space-y-5 lg:sticky lg:top-8">
+            {event.paymentType === 'shared_cost' && event.totalCostPence && event.minParticipants && (
+              <SharedCostTicker
+                eventId={event.id}
+                totalCostPence={event.totalCostPence}
+                minParticipants={event.minParticipants}
+                maxParticipants={event.maxCapacity ?? event.minParticipants * 3}
+                currentRsvpCount={goingCount}
+              />
+            )}
             <RsvpCard
               event={event}
+              group={group}
               colour={colour}
               currentUser={currentUser}
               rsvpStatus={rsvpStatus}
               onRsvp={handleMemberRsvp}
+              guestExpanded={guestExpanded}
+              onToggleGuest={() => setGuestExpanded(true)}
               guestStatus={guestRsvpState}
-              guestName={guestName}
+              guestDismissed={guestDismissed}
+              onGuestDismiss={() => setGuestDismissed(true)}
+              guestFirstName={guestFirstName}
+              guestLastName={guestLastName}
               guestEmail={guestEmail}
-              onGuestNameChange={(v) => { setGuestName(v); setGuestFieldErrors((p) => ({ ...p, name: undefined })) }}
+              onGuestFirstNameChange={(v) => { setGuestFirstName(v); setGuestFieldErrors((p) => ({ ...p, firstName: undefined })) }}
+              onGuestLastNameChange={(v) => { setGuestLastName(v); setGuestFieldErrors((p) => ({ ...p, lastName: undefined })) }}
               onGuestEmailChange={(v) => { setGuestEmail(v); setGuestFieldErrors((p) => ({ ...p, email: undefined })) }}
               onGuestRsvp={handleGuestRsvp}
               guestError={guestError}
@@ -881,6 +1247,18 @@ export default function EventPageClient({
       <div className="fixed bottom-0 left-0 right-0 lg:hidden bg-white border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-30">
         <div className="px-4 py-3">
           {currentUser ? (
+            event.paymentType === 'fixed' && event.pricePence ? (
+              <button
+                onClick={() => handleMemberRsvp('going')}
+                disabled={rsvpStatus === 'loading' || rsvpStatus === 'going'}
+                className="w-full py-3 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2"
+                style={{ backgroundColor: rsvpStatus === 'going' ? '#059669' : colour }}
+              >
+                {rsvpStatus === 'loading' ? <Spinner /> :
+                 rsvpStatus === 'going' ? <><CheckIcon /> Ticket purchased</> :
+                 <>Buy ticket &mdash; &pound;{(event.pricePence / 100).toFixed(2)}</>}
+              </button>
+            ) : (
             <div className="flex items-center gap-2">
               {(['going', 'maybe', 'not_going'] as const).map((status) => {
                 const active = rsvpStatus === status
@@ -905,52 +1283,15 @@ export default function EventPageClient({
                 )
               })}
             </div>
-          ) : guestRsvpState === 'done' ? (
-            <div className="flex items-center justify-center gap-2 py-2.5">
-              <div className="w-5 h-5 rounded-full flex items-center justify-center" style={{ backgroundColor: '#059669' }}>
-                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                </svg>
-              </div>
-              <span className="font-semibold text-sm text-gray-900">You&apos;re on the list, {guestName.split(' ')[0]}!</span>
-            </div>
-          ) : guestRsvpState === 'already_rsvped' ? (
-            <div className="flex items-center justify-center gap-2 py-2.5">
-              <span className="text-sm">📬</span>
-              <span className="font-semibold text-sm text-gray-900">Already RSVPed — check your inbox!</span>
-            </div>
+            )
           ) : (
-            <div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={guestName}
-                  onChange={(e) => { setGuestName(e.target.value); setGuestFieldErrors((p) => ({ ...p, name: undefined })) }}
-                  placeholder="Name"
-                  className={`flex-1 px-3 py-2.5 rounded-xl border text-sm ${guestFieldErrors.name ? 'border-red-300' : 'border-gray-200'}`}
-                />
-                <input
-                  type="email"
-                  value={guestEmail}
-                  onChange={(e) => { setGuestEmail(e.target.value); setGuestFieldErrors((p) => ({ ...p, email: undefined })) }}
-                  placeholder="Email"
-                  className={`flex-1 px-3 py-2.5 rounded-xl border text-sm ${guestFieldErrors.email ? 'border-red-300' : 'border-gray-200'}`}
-                />
-                <button
-                  onClick={handleGuestRsvp}
-                  disabled={guestRsvpState === 'loading'}
-                  className="px-4 py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-50 flex items-center gap-1.5"
-                  style={{ backgroundColor: colour }}
-                >
-                  {guestRsvpState === 'loading' ? <Spinner /> : 'RSVP'}
-                </button>
-              </div>
-              {(guestFieldErrors.name || guestFieldErrors.email || guestError) && (
-                <p className="text-red-500 text-xs mt-1.5">
-                  {guestFieldErrors.name || guestFieldErrors.email || guestError}
-                </p>
-              )}
-            </div>
+            <Link
+              href={`/auth?next=/events/${event.id}`}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-white font-bold text-sm"
+              style={{ backgroundColor: colour }}
+            >
+              Sign in to RSVP &rarr;
+            </Link>
           )}
         </div>
       </div>

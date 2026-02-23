@@ -3,10 +3,11 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { slug: string } }
+  { params }: { params: Promise<{ slug: string }> }
 ) {
+  const { slug } = await params
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-  const url = `${appUrl}/g/${params.slug}`
+  const url = `${appUrl}/g/${slug}`
 
   // Generate QR code as SVG — no canvas dependency required
   const svg = await QRCode.toString(url, {
