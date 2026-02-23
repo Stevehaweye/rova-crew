@@ -1,5 +1,4 @@
 import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function GET(request: NextRequest) {
@@ -8,11 +7,11 @@ export async function GET(request: NextRequest) {
   const origin = requestUrl.origin
 
   if (!code) {
-    // No code present — redirect to auth with an error hint
     return NextResponse.redirect(`${origin}/auth?error=missing_code`)
   }
 
-  const cookieStore = await cookies()
+  // Collect cookies to set on the final response
+  const cookiesToForward: { name: string; value: string; options: Record<string, unknown> }[] = []
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,12 +19,10 @@ export async function GET(request: NextRequest) {
     {
       cookies: {
         getAll() {
-          return cookieStore.getAll()
+          return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          )
+          cookiesToForward.push(...cookiesToSet)
         },
       },
     }
@@ -36,10 +33,15 @@ export async function GET(request: NextRequest) {
 
   if (exchangeError) {
     console.error('[auth/callback] exchangeCodeForSession error:', exchangeError.message)
-    return NextResponse.redirect(`${origin}/auth?error=exchange_failed`)
+    const errorUrl = new URL(`${origin}/auth`)
+    errorUrl.searchParams.set('error', 'exchange_failed')
+    errorUrl.searchParams.set('detail', exchangeError.message)
+    return NextResponse.redirect(errorUrl)
   }
 
   // Determine where to send the user
+  let redirectTo = `${origin}/home`
+
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -52,9 +54,15 @@ export async function GET(request: NextRequest) {
       .single()
 
     if (!profile?.onboarding_complete) {
-      return NextResponse.redirect(`${origin}/onboarding`)
+      redirectTo = `${origin}/onboarding`
     }
   }
 
-  return NextResponse.redirect(`${origin}/home`)
+  // Build final response with all auth cookies
+  const response = NextResponse.redirect(redirectTo)
+  cookiesToForward.forEach(({ name, value, options }) =>
+    response.cookies.set(name, value, options as never)
+  )
+
+  return response
 }
