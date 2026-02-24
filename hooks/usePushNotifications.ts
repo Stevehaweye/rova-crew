@@ -28,10 +28,12 @@ export function usePushNotifications() {
 
     // Check if we have an active push subscription
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.ready.then((registration) => {
-        registration.pushManager.getSubscription().then((sub) => {
-          setIsSubscribed(!!sub)
-        })
+      navigator.serviceWorker.getRegistration('/sw.js').then((registration) => {
+        if (registration) {
+          registration.pushManager.getSubscription().then((sub) => {
+            setIsSubscribed(!!sub)
+          })
+        }
       })
     }
   }, [])

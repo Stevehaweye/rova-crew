@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
 
     const serviceClient = createServiceClient()
 
-    await serviceClient.from('push_subscriptions').upsert(
+    const { error: upsertErr } = await serviceClient.from('push_subscriptions').upsert(
       {
         user_id: user.id,
         endpoint,
@@ -37,6 +37,11 @@ export async function POST(request: NextRequest) {
       },
       { onConflict: 'user_id,endpoint' }
     )
+
+    if (upsertErr) {
+      console.error('[push/subscribe] upsert error:', upsertErr)
+      return NextResponse.json({ error: 'Failed to save subscription' }, { status: 500 })
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {
