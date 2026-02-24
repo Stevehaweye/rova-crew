@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
@@ -97,6 +97,8 @@ interface Props {
   initialMemberRsvps: MemberRsvp[]
   initialGuestRsvps: GuestRsvp[]
   memberGoingCount: number
+  memberMaybeCount: number
+  memberNotGoingCount: number
   guestGoingCount: number
   currentUser: CurrentUserProfile | null
   currentUserRsvp: { id: string; status: 'going' | 'maybe' | 'not_going' } | null
@@ -265,12 +267,12 @@ function Hero({
 function InfoBar({
   event,
   colour,
-  memberCount,
+  goingCount,
   guestCount,
 }: {
   event: EventData
   colour: string
-  memberCount: number
+  goingCount: number
   guestCount: number
 }) {
   const startDate = new Date(event.startsAt)
@@ -303,15 +305,15 @@ function InfoBar({
             <span>
               {guestCount > 0 ? (
                 <>
-                  <strong className="text-gray-900">{memberCount}</strong>
-                  {memberCount === 1 ? ' member' : ' members'}
+                  <strong className="text-gray-900">{goingCount}</strong>
+                  {goingCount === 1 ? ' member' : ' members'}
                   <span className="text-gray-400"> + </span>
                   <strong className="text-gray-900">{guestCount}</strong>
                   {guestCount === 1 ? ' guest' : ' guests'}
                 </>
               ) : (
                 <>
-                  <strong className="text-gray-900">{memberCount}</strong> going
+                  <strong className="text-gray-900">{goingCount}</strong> going
                 </>
               )}
               {event.maxCapacity && (
@@ -321,7 +323,7 @@ function InfoBar({
           </div>
 
           {(() => {
-            const totalCount = memberCount + guestCount
+            const totalCount = goingCount + guestCount
             const badge =
               event.paymentType === 'fixed' && event.pricePence
                 ? { bg: '#D97706', label: `\u00a3${(event.pricePence / 100).toFixed(2)}` }
@@ -346,13 +348,13 @@ function InfoBar({
               <div
                 className="h-full rounded-full transition-all duration-500"
                 style={{
-                  width: `${Math.min(((memberCount + guestCount) / event.maxCapacity) * 100, 100)}%`,
+                  width: `${Math.min(((goingCount + guestCount) / event.maxCapacity) * 100, 100)}%`,
                   backgroundColor: colour,
                 }}
               />
             </div>
             <p className="text-xs text-gray-400 mt-1">
-              {Math.max(event.maxCapacity - memberCount - guestCount, 0)} spot{event.maxCapacity - memberCount - guestCount !== 1 ? 's' : ''} remaining
+              {Math.max(event.maxCapacity - goingCount - guestCount, 0)} spot{event.maxCapacity - goingCount - guestCount !== 1 ? 's' : ''} remaining
             </p>
           </div>
         )}
@@ -367,35 +369,57 @@ function SocialSnowball({
   memberRsvps,
   guestRsvps,
   goingCount,
+  maybeCount,
+  notGoingCount,
+  guestCount,
   colour,
 }: {
   memberRsvps: MemberRsvp[]
   guestRsvps: GuestRsvp[]
   goingCount: number
+  maybeCount: number
+  notGoingCount: number
+  guestCount: number
   colour: string
 }) {
-  const maxVisible = 8
+  const maxVisible = 5
   const allRsvps = [
     ...memberRsvps.map((r) => ({
       id: r.id,
       name: r.profile.full_name,
       avatarUrl: r.profile.avatar_url,
-      status: r.status,
       isGuest: false,
     })),
     ...guestRsvps.map((r) => ({
       id: r.id,
       name: `${r.firstName} ${r.lastName[0]}.`,
       avatarUrl: null as string | null,
-      status: 'going' as const,
       isGuest: true,
     })),
   ]
   const visible = allRsvps.slice(0, maxVisible)
-  const overflow = Math.max(goingCount - maxVisible, 0)
+  const totalGoing = goingCount + guestCount
+  const overflow = Math.max(totalGoing - maxVisible, 0)
 
-  const goingOnly = allRsvps.filter((r) => r.status === 'going').length
-  const maybeOnly = allRsvps.filter((r) => r.status === 'maybe').length
+  // Track previously seen IDs for animation
+  const seenIdsRef = useRef<Set<string>>(new Set(allRsvps.map((r) => r.id)))
+  const prevIdsSnapshot = useRef<Set<string>>(new Set(allRsvps.map((r) => r.id)))
+
+  useEffect(() => {
+    prevIdsSnapshot.current = new Set(seenIdsRef.current)
+    allRsvps.forEach((r) => seenIdsRef.current.add(r.id))
+  }, [allRsvps])
+
+  // Social text
+  function getSocialText(): string {
+    if (totalGoing === 0) return ''
+    const sorted = [...allRsvps].sort((a, b) => a.name.localeCompare(b.name))
+    const firstName = (name: string) => name.split(' ')[0]
+    if (totalGoing === 1) return `${firstName(sorted[0]?.name ?? 'Someone')} is going`
+    if (totalGoing === 2) return `${firstName(sorted[0]?.name ?? '')} and ${firstName(sorted[1]?.name ?? '')} are going`
+    if (totalGoing === 3) return `${firstName(sorted[0]?.name ?? '')}, ${firstName(sorted[1]?.name ?? '')} and 1 other are going`
+    return `${firstName(sorted[0]?.name ?? '')}, ${firstName(sorted[1]?.name ?? '')} and ${totalGoing - 2} others are going`
+  }
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
@@ -407,12 +431,12 @@ function SocialSnowball({
         </p>
       ) : (
         <>
-          {/* Avatar bubbles */}
-          <div className="flex items-center -space-x-2 mb-4">
+          {/* Face stack */}
+          <div className="flex items-center -space-x-2.5 mb-3">
             {visible.map((r) => (
               <div
                 key={r.id}
-                className="relative w-10 h-10 rounded-full ring-2 ring-white overflow-hidden flex-shrink-0 transition-transform duration-300"
+                className={`relative w-10 h-10 rounded-full ring-2 ring-white overflow-hidden flex-shrink-0${!prevIdsSnapshot.current.has(r.id) ? ' animate-face-in' : ''}`}
                 title={r.name}
               >
                 {r.avatarUrl ? (
@@ -429,35 +453,52 @@ function SocialSnowball({
               </div>
             ))}
             {overflow > 0 && (
-              <div className="w-10 h-10 rounded-full ring-2 ring-white bg-gray-100 flex items-center justify-center flex-shrink-0">
-                <span className="text-xs font-bold text-gray-500">+{overflow}</span>
+              <div
+                className="w-10 h-10 rounded-full ring-2 ring-white flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: colour }}
+              >
+                <span className="text-[11px] font-bold text-white">+{overflow}</span>
               </div>
             )}
           </div>
 
-          {/* Name list with Guest chips */}
-          <div className="space-y-2 mb-4">
-            {visible.slice(0, 5).map((r) => (
-              <div key={r.id} className="flex items-center gap-2">
-                <span className="text-xs font-medium text-gray-700 truncate">{r.name}</span>
-                {r.isGuest && (
-                  <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 flex-shrink-0">
-                    Guest
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
+          {/* Social text */}
+          <p className="text-sm text-gray-600 mb-4">{getSocialText()}</p>
 
-          {/* Counts */}
-          <div className="flex items-center gap-3 text-sm">
-            <span className="font-semibold text-gray-900">{goingOnly} going</span>
-            {maybeOnly > 0 && (
-              <span className="text-gray-400">{maybeOnly} maybe</span>
+          {/* Status counts */}
+          <div className="flex items-center gap-4 text-xs">
+            <span className="flex items-center gap-1 font-semibold text-gray-700">
+              <span className="text-emerald-500">&#x2705;</span> {totalGoing} Going
+            </span>
+            {maybeCount > 0 && (
+              <span className="flex items-center gap-1 font-medium text-gray-500">
+                <span className="text-amber-500">&#x2753;</span> {maybeCount} Interested
+              </span>
+            )}
+            {notGoingCount > 0 && (
+              <span className="flex items-center gap-1 font-medium text-gray-400">
+                <span className="text-red-400">&#x274C;</span> {notGoingCount} Not going
+              </span>
             )}
           </div>
         </>
       )}
+
+      <style>{`
+        @keyframes face-in {
+          from {
+            opacity: 0;
+            transform: translateX(12px) scale(0);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0) scale(1);
+          }
+        }
+        .animate-face-in {
+          animation: face-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        }
+      `}</style>
     </div>
   )
 }
@@ -581,6 +622,7 @@ function RsvpCard({
   currentUser,
   rsvpStatus,
   onRsvp,
+  isFull,
   guestExpanded,
   onToggleGuest,
   guestStatus,
@@ -602,6 +644,7 @@ function RsvpCard({
   currentUser: CurrentUserProfile | null
   rsvpStatus: RsvpStatus
   onRsvp: (status: 'going' | 'maybe' | 'not_going') => void
+  isFull: boolean
   guestExpanded: boolean
   onToggleGuest: () => void
   guestStatus: GuestRsvpStatus
@@ -628,7 +671,21 @@ function RsvpCard({
 
       {/* ── Member section ─────────────────────────────────────── */}
       {currentUser ? (
-        event.paymentType === 'fixed' && priceLabel ? (
+        isFull && rsvpStatus !== 'going' && rsvpStatus !== 'maybe' ? (
+          <div className="space-y-2.5">
+            <button
+              onClick={() => onRsvp('going')}
+              disabled={rsvpStatus === 'loading'}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl text-white font-bold text-sm transition-all disabled:opacity-50"
+              style={{ backgroundColor: '#F59E0B' }}
+            >
+              {rsvpStatus === 'loading' ? <Spinner /> : 'Join Waitlist'}
+            </button>
+            <p className="text-xs text-gray-400 text-center">
+              This event is full. You&apos;ll be notified if a spot opens up.
+            </p>
+          </div>
+        ) : event.paymentType === 'fixed' && priceLabel ? (
           <div className="space-y-2.5">
             <button
               onClick={() => onRsvp('going')}
@@ -862,6 +919,8 @@ export default function EventPageClient({
   initialMemberRsvps,
   initialGuestRsvps,
   memberGoingCount,
+  memberMaybeCount,
+  memberNotGoingCount,
   guestGoingCount,
   currentUser,
   currentUserRsvp,
@@ -880,9 +939,16 @@ export default function EventPageClient({
 
   const [memberRsvps, setMemberRsvps] = useState<MemberRsvp[]>(initialMemberRsvps)
   const [guestRsvps, setGuestRsvps] = useState<GuestRsvp[]>(initialGuestRsvps)
-  const [memberCount, setMemberCount] = useState(memberGoingCount)
+  const [goingCount, setGoingCount] = useState(memberGoingCount)
+  const [maybeCount, setMaybeCount] = useState(memberMaybeCount)
+  const [notGoingCount, setNotGoingCount] = useState(memberNotGoingCount)
   const [guestCount, setGuestCount] = useState(guestGoingCount)
-  const goingCount = memberCount + guestCount
+  const totalGoing = goingCount + guestCount
+  const isFull = event.maxCapacity ? totalGoing >= event.maxCapacity : false
+
+  // Ref for accessing current memberRsvps inside realtime callbacks
+  const memberRsvpsRef = useRef(memberRsvps)
+  useEffect(() => { memberRsvpsRef.current = memberRsvps }, [memberRsvps])
 
   // Member RSVP state
   const [rsvpStatus, setRsvpStatus] = useState<RsvpStatus>(
@@ -923,7 +989,6 @@ export default function EventPageClient({
         async (payload) => {
           const newRsvp = payload.new as { id: string; user_id: string; status: string; created_at: string }
           if (newRsvp.status === 'going' || newRsvp.status === 'maybe') {
-            // Fetch profile for this user
             const { data: profile } = await supabase
               .from('profiles')
               .select('full_name, avatar_url')
@@ -942,7 +1007,51 @@ export default function EventPageClient({
               if (prev.some((r) => r.id === rsvp.id || r.userId === rsvp.userId)) return prev
               return [...prev, rsvp]
             })
-            setMemberCount((c) => c + 1)
+            if (newRsvp.status === 'going') setGoingCount((c) => c + 1)
+            if (newRsvp.status === 'maybe') setMaybeCount((c) => c + 1)
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'rsvps', filter: `event_id=eq.${event.id}` },
+        async (payload) => {
+          const updated = payload.new as { id: string; user_id: string; status: string; created_at: string }
+          const prevRsvp = memberRsvpsRef.current.find((r) => r.userId === updated.user_id)
+          const oldStatus: string | null = prevRsvp?.status ?? null
+
+          if (updated.status === 'going' || updated.status === 'maybe') {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('full_name, avatar_url')
+              .eq('id', updated.user_id)
+              .maybeSingle()
+
+            const rsvp: MemberRsvp = {
+              id: updated.id,
+              userId: updated.user_id,
+              status: updated.status as 'going' | 'maybe',
+              createdAt: updated.created_at,
+              profile: profile ?? prevRsvp?.profile ?? { full_name: 'Member', avatar_url: null },
+            }
+
+            setMemberRsvps((prev) => {
+              const existing = prev.find((r) => r.userId === updated.user_id)
+              if (existing) return prev.map((r) => r.userId === updated.user_id ? rsvp : r)
+              return [...prev, rsvp]
+            })
+
+            // Adjust counts
+            if (oldStatus === 'going' && updated.status !== 'going') setGoingCount((c) => Math.max(c - 1, 0))
+            if (oldStatus === 'maybe' && updated.status !== 'maybe') setMaybeCount((c) => Math.max(c - 1, 0))
+            if (oldStatus === 'not_going') setNotGoingCount((c) => Math.max(c - 1, 0))
+            if (updated.status === 'going' && oldStatus !== 'going') setGoingCount((c) => c + 1)
+            if (updated.status === 'maybe' && oldStatus !== 'maybe') setMaybeCount((c) => c + 1)
+          } else if (updated.status === 'not_going') {
+            setMemberRsvps((prev) => prev.filter((r) => r.userId !== updated.user_id))
+            setNotGoingCount((c) => c + 1)
+            if (oldStatus === 'going') setGoingCount((c) => Math.max(c - 1, 0))
+            if (oldStatus === 'maybe') setMaybeCount((c) => Math.max(c - 1, 0))
           }
         }
       )
@@ -1044,15 +1153,18 @@ export default function EventPageClient({
           },
         ]
       })
-      // Update member count if transitioning to going/maybe from idle or not_going
-      if (rsvpStatus === 'idle' || rsvpStatus === 'not_going') {
-        setMemberCount((c) => c + 1)
-      }
+      // Decrement old count
+      if (rsvpStatus === 'going') setGoingCount((c) => Math.max(c - 1, 0))
+      if (rsvpStatus === 'maybe') setMaybeCount((c) => Math.max(c - 1, 0))
+      if (rsvpStatus === 'not_going') setNotGoingCount((c) => Math.max(c - 1, 0))
+      // Increment new count
+      if (status === 'going') setGoingCount((c) => c + 1)
+      if (status === 'maybe') setMaybeCount((c) => c + 1)
     } else if (status === 'not_going') {
       setMemberRsvps((prev) => prev.filter((r) => r.userId !== currentUser.id))
-      if (rsvpStatus !== 'idle' && rsvpStatus !== 'not_going' && rsvpStatus !== 'error') {
-        setMemberCount((c) => Math.max(c - 1, 0))
-      }
+      setNotGoingCount((c) => c + 1)
+      if (rsvpStatus === 'going') setGoingCount((c) => Math.max(c - 1, 0))
+      if (rsvpStatus === 'maybe') setMaybeCount((c) => Math.max(c - 1, 0))
     }
 
     setRsvpStatus(status)
@@ -1160,7 +1272,7 @@ export default function EventPageClient({
       <Hero event={event} group={group} colour={colour} organiser={organiser} />
 
       {/* Info bar */}
-      <InfoBar event={event} colour={colour} memberCount={memberCount} guestCount={guestCount} />
+      <InfoBar event={event} colour={colour} goingCount={goingCount} guestCount={guestCount} />
 
       {/* Main content */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-10 py-8">
@@ -1200,7 +1312,7 @@ export default function EventPageClient({
                   totalCostPence={event.totalCostPence}
                   minParticipants={event.minParticipants}
                   maxParticipants={event.maxCapacity ?? event.minParticipants * 3}
-                  currentRsvpCount={goingCount}
+                  currentRsvpCount={totalGoing}
                 />
               </div>
             )}
@@ -1214,6 +1326,7 @@ export default function EventPageClient({
                 currentUser={currentUser}
                 rsvpStatus={rsvpStatus}
                 onRsvp={handleMemberRsvp}
+                isFull={isFull}
                 guestExpanded={guestExpanded}
                 onToggleGuest={() => setGuestExpanded(true)}
                 guestStatus={guestRsvpState}
@@ -1237,6 +1350,9 @@ export default function EventPageClient({
                 memberRsvps={memberRsvps}
                 guestRsvps={guestRsvps}
                 goingCount={goingCount}
+                maybeCount={maybeCount}
+                notGoingCount={notGoingCount}
+                guestCount={guestCount}
                 colour={colour}
               />
             </div>
@@ -1284,7 +1400,7 @@ export default function EventPageClient({
                 totalCostPence={event.totalCostPence}
                 minParticipants={event.minParticipants}
                 maxParticipants={event.maxCapacity ?? event.minParticipants * 3}
-                currentRsvpCount={goingCount}
+                currentRsvpCount={totalGoing}
               />
             )}
             <RsvpCard
@@ -1294,6 +1410,7 @@ export default function EventPageClient({
               currentUser={currentUser}
               rsvpStatus={rsvpStatus}
               onRsvp={handleMemberRsvp}
+              isFull={isFull}
               guestExpanded={guestExpanded}
               onToggleGuest={() => setGuestExpanded(true)}
               guestStatus={guestRsvpState}
@@ -1313,6 +1430,9 @@ export default function EventPageClient({
               memberRsvps={memberRsvps}
               guestRsvps={guestRsvps}
               goingCount={goingCount}
+              maybeCount={maybeCount}
+              notGoingCount={notGoingCount}
+              guestCount={guestCount}
               colour={colour}
             />
             <ShareButton eventId={event.id} title={event.title} colour={colour} />
@@ -1324,7 +1444,16 @@ export default function EventPageClient({
       <div className="fixed bottom-0 left-0 right-0 lg:hidden bg-white border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-30">
         <div className="px-4 py-3">
           {currentUser ? (
-            event.paymentType === 'fixed' && event.pricePence ? (
+            isFull && rsvpStatus !== 'going' && rsvpStatus !== 'maybe' ? (
+              <button
+                onClick={() => handleMemberRsvp('going')}
+                disabled={rsvpStatus === 'loading'}
+                className="w-full py-3 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2"
+                style={{ backgroundColor: '#F59E0B' }}
+              >
+                {rsvpStatus === 'loading' ? <Spinner /> : 'Join Waitlist'}
+              </button>
+            ) : event.paymentType === 'fixed' && event.pricePence ? (
               <button
                 onClick={() => handleMemberRsvp('going')}
                 disabled={rsvpStatus === 'loading' || rsvpStatus === 'going'}

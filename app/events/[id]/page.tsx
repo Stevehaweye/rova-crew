@@ -60,7 +60,9 @@ export default async function EventPage({
 
   // Parallel fetches: RSVP counts, initial RSVPs, guest RSVPs, user's RSVP, user profile
   const [
-    memberRsvpCount,
+    goingCountResult,
+    maybeCountResult,
+    notGoingCountResult,
     guestRsvpCount,
     memberRsvps,
     guestRsvps,
@@ -68,12 +70,26 @@ export default async function EventPage({
     profileResult,
     organiserResult,
   ] = await Promise.all([
-    // Member RSVP count (going + maybe)
+    // Member RSVP count — going
     supabase
       .from('rsvps')
       .select('*', { count: 'exact', head: true })
       .eq('event_id', id)
-      .in('status', ['going', 'maybe']),
+      .eq('status', 'going'),
+
+    // Member RSVP count — maybe
+    supabase
+      .from('rsvps')
+      .select('*', { count: 'exact', head: true })
+      .eq('event_id', id)
+      .eq('status', 'maybe'),
+
+    // Member RSVP count — not_going
+    supabase
+      .from('rsvps')
+      .select('*', { count: 'exact', head: true })
+      .eq('event_id', id)
+      .eq('status', 'not_going'),
 
     // Guest RSVP count (confirmed)
     supabase
@@ -127,7 +143,9 @@ export default async function EventPage({
       .maybeSingle(),
   ])
 
-  const memberGoingCount = memberRsvpCount.count ?? 0
+  const memberGoingCount = goingCountResult.count ?? 0
+  const memberMaybeCount = maybeCountResult.count ?? 0
+  const memberNotGoingCount = notGoingCountResult.count ?? 0
   const guestGoingCount = guestRsvpCount.count ?? 0
 
   // ── Event Chat data ──────────────────────────────────────────────────────
@@ -340,6 +358,8 @@ export default async function EventPage({
         }))
       }
       memberGoingCount={memberGoingCount}
+      memberMaybeCount={memberMaybeCount}
+      memberNotGoingCount={memberNotGoingCount}
       guestGoingCount={guestGoingCount}
       currentUser={user ? {
         id: user.id,

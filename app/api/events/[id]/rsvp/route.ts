@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendRsvpConfirmationEmail, sendWaitlistEmail } from '@/lib/email'
 import { sendPushToUser } from '@/lib/push-sender'
+import { checkRsvpMilestone } from '@/lib/rsvp-milestones'
 
 export async function POST(
   request: NextRequest,
@@ -86,6 +87,34 @@ export async function POST(
           },
           { onConflict: 'channel_id,user_id' }
         )
+      }
+    }
+
+    // Milestone check (fire-and-forget)
+    if (finalStatus === 'going') {
+      const svcMilestone = createServiceClient()
+      const { count: currentGoingCount } = await svcMilestone
+        .from('rsvps')
+        .select('*', { count: 'exact', head: true })
+        .eq('event_id', eventId)
+        .eq('status', 'going')
+
+      if (currentGoingCount !== null) {
+        const { data: evtData } = await svcMilestone
+          .from('events')
+          .select('group_id, max_capacity')
+          .eq('id', eventId)
+          .single()
+
+        if (evtData) {
+          checkRsvpMilestone(
+            eventId,
+            evtData.group_id,
+            currentGoingCount,
+            evtData.max_capacity,
+            user.id
+          ).catch((err) => console.error('[rsvp] milestone check error:', err))
+        }
       }
     }
 
