@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
               title: group.name,
               body: `${senderName}: ${content.trim().slice(0, 80)}`,
               url: `/g/${group.slug}/chat`,
-            }).catch((err) => console.error('[chat] push error:', err))
+            }, 'mention').catch((err) => console.error('[chat] push error:', err))
           }
         }
       }

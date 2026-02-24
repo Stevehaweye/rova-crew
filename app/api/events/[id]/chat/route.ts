@@ -129,7 +129,7 @@ export async function POST(
           title: `${event.title} chat`,
           body: `${senderName}: ${content.trim().slice(0, 80)}`,
           url: `/events/${eventId}`,
-        }).catch((err) => console.error('[event-chat] push error:', err))
+        }, 'event_chat').catch((err) => console.error('[event-chat] push error:', err))
       }
     }
 

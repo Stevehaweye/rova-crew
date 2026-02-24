@@ -221,7 +221,7 @@ export async function POST(
               title: `You're in! A spot opened up`,
               body: `${evt.title} — ${format(startDate, 'EEEE d MMM')} with ${group.name}`,
               url: eventUrl,
-            }).catch((err) => console.error('[rsvp] waitlist push error:', err))
+            }, 'waitlist').catch((err) => console.error('[rsvp] waitlist push error:', err))
 
             // Send email
             const { data: promotedProfile } = await svc

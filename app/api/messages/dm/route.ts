@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
         title: senderName,
         body: content.trim().slice(0, 80),
         url: `/messages/${channelId}`,
-      }).catch((err) => console.error('[dm] push error:', err))
+      }, 'dm').catch((err) => console.error('[dm] push error:', err))
     }
 
     return NextResponse.json({ success: true, messageId: message.id })

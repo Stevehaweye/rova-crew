@@ -83,7 +83,8 @@ export async function POST(request: NextRequest) {
             body: content.trim().slice(0, 100),
             url: `/g/${group.slug}/announcements`,
           },
-          user.id
+          user.id,
+          'announcement'
         ).catch((err) => console.error('[announcements] push error:', err))
       }
     }

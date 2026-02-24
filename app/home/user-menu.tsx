@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 
 export default function UserMenu({
@@ -58,7 +59,15 @@ export default function UserMenu({
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-44 bg-white rounded-xl border border-gray-100 shadow-lg py-1 z-50">
+        <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl border border-gray-100 shadow-lg py-1 z-50">
+          <Link
+            href="/settings/notifications"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            Notification settings
+          </Link>
+          <div className="border-t border-gray-100 my-0.5" />
           <button
             onClick={handleSignOut}
             className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"

@@ -88,7 +88,7 @@ export async function checkRsvpMilestone(
         title: group.name,
         body: pushBody,
         url: eventUrl,
-      }).catch((err) => console.error('[milestone] push error:', err))
+      }, 'rsvp_milestone').catch((err) => console.error('[milestone] push error:', err))
     )
   )
 }

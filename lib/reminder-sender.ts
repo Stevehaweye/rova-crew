@@ -116,7 +116,7 @@ async function send7dayReminder(
         title: `${event.title} is in 1 week`,
         body: `${eventDate} with ${group.name}`,
         url: eventUrl,
-      }).catch((err) => console.error('[reminders] push error:', err))
+      }, 'event_reminder').catch((err) => console.error('[reminders] push error:', err))
 
       if (profile?.email) {
         sendReminderEmail({
@@ -163,7 +163,7 @@ async function send48hRsvpdReminder(
         title: `${event.title} is in 2 days`,
         body: `${eventDate} with ${group.name}`,
         url: eventUrl,
-      }).catch((err) => console.error('[reminders] push error:', err))
+      }, 'event_reminder').catch((err) => console.error('[reminders] push error:', err))
 
       if (profile?.email) {
         sendReminderEmail({
@@ -218,7 +218,7 @@ async function send48hNotRsvpdReminder(
         title: `Haven't RSVPd yet?`,
         body: `${event.title} is in 2 days — RSVP with ${group.name}`,
         url: eventUrl,
-      }).catch((err) => console.error('[reminders] push error:', err))
+      }, 'event_reminder').catch((err) => console.error('[reminders] push error:', err))
     )
   )
 
@@ -247,7 +247,7 @@ async function send2hReminder(
         title: `${event.title} starts in 2 hours`,
         body: `${eventTime}${event.location ? ` at ${event.location}` : ''}`,
         url: eventUrl,
-      }).catch((err) => console.error('[reminders] push error:', err))
+      }, 'event_reminder').catch((err) => console.error('[reminders] push error:', err))
     )
   )
 
@@ -275,7 +275,7 @@ async function sendPostEventReminder(
         title: `Thanks for coming to ${event.title}!`,
         body: `Hope you had a great time. See you at the next one!`,
         url: eventUrl,
-      }).catch((err) => console.error('[reminders] push error:', err))
+      }, 'event_reminder').catch((err) => console.error('[reminders] push error:', err))
     )
   )
 

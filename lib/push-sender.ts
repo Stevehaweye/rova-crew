@@ -17,14 +17,57 @@ export interface PushPayload {
   icon?: string
 }
 
+// Maps notificationType values to user_notification_preferences column names
+const NOTIFICATION_TYPE_TO_PREF: Record<string, string> = {
+  event_reminder: 'event_reminders',
+  waitlist: 'waitlist_updates',
+  new_event: 'new_events',
+  dm: 'direct_messages',
+  mention: 'mentions',
+  group_chat: 'group_chat',
+  event_chat: 'event_chat',
+  announcement: 'announcements',
+  rsvp_milestone: 'rsvp_milestones',
+}
+
+/**
+ * Check if a user has a specific notification preference enabled.
+ * Returns true by default (if no row exists, all prefs are on).
+ */
+async function isPreferenceEnabled(
+  userId: string,
+  notificationType: string
+): Promise<boolean> {
+  const prefColumn = NOTIFICATION_TYPE_TO_PREF[notificationType]
+  if (!prefColumn) return true // Unknown type — allow by default
+
+  const supabase = createServiceClient()
+  const { data } = await supabase
+    .from('user_notification_preferences')
+    .select(prefColumn)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (!data) return true // No row means all defaults (true)
+  return (data as unknown as Record<string, boolean>)[prefColumn] !== false
+}
+
 /**
  * Send a push notification to all devices registered for a user.
  * Expired/invalid subscriptions are automatically cleaned up.
+ * When notificationType is provided, checks user preferences first.
  */
 export async function sendPushToUser(
   userId: string,
-  notification: PushPayload
+  notification: PushPayload,
+  notificationType?: string
 ): Promise<void> {
+  // Check user preference before sending
+  if (notificationType) {
+    const enabled = await isPreferenceEnabled(userId, notificationType)
+    if (!enabled) return
+  }
+
   const supabase = createServiceClient()
 
   const { data: subscriptions } = await supabase
@@ -73,11 +116,13 @@ export async function sendPushToUser(
 /**
  * Send a push notification to all approved members of a group.
  * Optionally exclude a user (e.g. the sender of a message).
+ * When notificationType is provided, filters out users who disabled that preference.
  */
 export async function sendPushToGroup(
   groupId: string,
   notification: PushPayload,
-  excludeUserId?: string
+  excludeUserId?: string,
+  notificationType?: string
 ): Promise<void> {
   const supabase = createServiceClient()
 
@@ -90,11 +135,29 @@ export async function sendPushToGroup(
 
   if (!members || members.length === 0) return
 
-  const userIds = members
+  let userIds = members
     .map((m) => m.user_id)
     .filter((id) => id !== excludeUserId)
 
   if (userIds.length === 0) return
+
+  // Batch-filter by preferences
+  if (notificationType) {
+    const prefColumn = NOTIFICATION_TYPE_TO_PREF[notificationType]
+    if (prefColumn) {
+      const { data: disabledPrefs } = await supabase
+        .from('user_notification_preferences')
+        .select('user_id')
+        .in('user_id', userIds)
+        .eq(prefColumn, false)
+
+      if (disabledPrefs && disabledPrefs.length > 0) {
+        const disabledSet = new Set(disabledPrefs.map((p) => p.user_id))
+        userIds = userIds.filter((id) => !disabledSet.has(id))
+        if (userIds.length === 0) return
+      }
+    }
+  }
 
   // Batch fetch all subscriptions for these users
   const { data: subscriptions } = await supabase
