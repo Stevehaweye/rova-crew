@@ -26,7 +26,7 @@ function CallbackHandler() {
 
     const supabase = createClient()
 
-    async function handleRedirect(userId: string) {
+    async function redirectUser(userId: string) {
       const { data: profile } = await supabase
         .from('profiles')
         .select('onboarding_complete')
@@ -40,49 +40,63 @@ function CallbackHandler() {
       }
     }
 
-    // Handle PKCE flow (code in query params)
+    async function trySessionOrError(detail?: string) {
+      // The session may already be established (e.g. from hash fragment tokens
+      // processed by the Supabase client on init). Check before showing error.
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (session?.user) {
+        await redirectUser(session.user.id)
+        return
+      }
+
+      // No session — show error
+      router.replace(
+        `/auth?error=exchange_failed&detail=${encodeURIComponent(detail ?? 'Could not establish session')}`
+      )
+    }
+
     const code = searchParams.get('code')
+
     if (code) {
-      supabase.auth.exchangeCodeForSession(code).then(async ({ data, error }) => {
-        if (error || !data.session?.user) {
-          router.replace(
-            `/auth?error=exchange_failed&detail=${encodeURIComponent(error?.message ?? 'No session')}`
-          )
-          return
-        }
-        handleRedirect(data.session.user.id)
-      })
+      // Try PKCE code exchange
+      supabase.auth
+        .exchangeCodeForSession(code)
+        .then(async ({ data, error }) => {
+          if (!error && data.session?.user) {
+            await redirectUser(data.session.user.id)
+          } else {
+            // Exchange failed — but session may exist from hash tokens
+            await trySessionOrError(error?.message)
+          }
+        })
       return
     }
 
-    // Handle implicit flow (tokens in URL hash — auto-detected by supabase client)
-    // Listen for the auth state change when tokens are processed from the hash
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        subscription.unsubscribe()
-        handleRedirect(session.user.id)
-      }
-    })
+    // No code param — session may come from hash fragment (implicit flow)
+    // or may already exist. Wait briefly then check.
+    const checkInterval = setInterval(async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
 
-    // Fallback: check if already signed in (tokens may have been processed before listener attached)
-    supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        subscription.unsubscribe()
-        handleRedirect(session.user.id)
+        clearInterval(checkInterval)
+        clearTimeout(timeout)
+        await redirectUser(session.user.id)
       }
-    })
+    }, 500)
 
-    // Safety timeout — if nothing happens after 5 seconds, redirect to auth
     const timeout = setTimeout(() => {
-      subscription.unsubscribe()
-      router.replace('/auth?error=timeout')
+      clearInterval(checkInterval)
+      trySessionOrError('Timed out waiting for session')
     }, 5000)
 
     return () => {
+      clearInterval(checkInterval)
       clearTimeout(timeout)
-      subscription.unsubscribe()
     }
   }, [searchParams, router])
 
