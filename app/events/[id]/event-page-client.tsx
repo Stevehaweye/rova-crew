@@ -6,6 +6,7 @@ import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
+import ContactOrganiserModal from '@/components/ContactOrganiserModal'
 
 const SharedCostTicker = dynamic(() => import('@/components/events/SharedCostTicker'), { ssr: false })
 
@@ -50,6 +51,7 @@ interface EventData {
 }
 
 interface GroupData {
+  id: string
   name: string
   slug: string
   logoUrl: string | null
@@ -83,6 +85,11 @@ interface CurrentUserProfile {
   avatarUrl: string | null
 }
 
+interface OrganiserData {
+  name: string
+  avatarUrl: string | null
+}
+
 interface Props {
   event: EventData
   group: GroupData
@@ -92,6 +99,7 @@ interface Props {
   guestGoingCount: number
   currentUser: CurrentUserProfile | null
   currentUserRsvp: { id: string; status: 'going' | 'maybe' | 'not_going' } | null
+  organiser: OrganiserData | null
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -166,10 +174,12 @@ function Hero({
   event,
   group,
   colour,
+  organiser,
 }: {
   event: EventData
   group: GroupData
   colour: string
+  organiser: OrganiserData | null
 }) {
   return (
     <section className="relative h-64 sm:h-80 overflow-hidden">
@@ -227,6 +237,12 @@ function Hero({
             )}
           </div>
           <span className="text-white/70 text-sm font-medium drop-shadow">{group.name}</span>
+          {organiser && (
+            <>
+              <span className="text-white/40 text-sm">·</span>
+              <span className="text-white/60 text-xs font-medium drop-shadow">by {organiser.name}</span>
+            </>
+          )}
         </div>
 
         <h1 className="text-2xl sm:text-4xl font-black text-white leading-tight tracking-tight drop-shadow-lg">
@@ -842,6 +858,7 @@ export default function EventPageClient({
   guestGoingCount,
   currentUser,
   currentUserRsvp,
+  organiser,
 }: Props) {
   const router = useRouter()
   const colour = hex(group.primaryColour)
@@ -868,6 +885,7 @@ export default function EventPageClient({
   const [guestEmail, setGuestEmail] = useState('')
   const [guestError, setGuestError] = useState('')
   const [guestFieldErrors, setGuestFieldErrors] = useState<{ firstName?: string; lastName?: string; email?: string }>({})
+  const [contactModalOpen, setContactModalOpen] = useState(false)
 
   // ── Payment success handler ───────────────────────────────────────────────
 
@@ -977,17 +995,20 @@ export default function EventPageClient({
 
     setRsvpStatus('loading')
 
-    const supabase = createClient()
+    try {
+      const res = await fetch(`/api/events/${event.id}/rsvp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
 
-    const { error } = await supabase
-      .from('rsvps')
-      .upsert(
-        { event_id: event.id, user_id: currentUser.id, status },
-        { onConflict: 'event_id,user_id' }
-      )
-
-    if (error) {
-      console.error('[rsvp] error:', error)
+      if (!res.ok) {
+        console.error('[rsvp] error:', await res.text())
+        setRsvpStatus('error')
+        return
+      }
+    } catch (err) {
+      console.error('[rsvp] error:', err)
       setRsvpStatus('error')
       return
     }
@@ -1123,7 +1144,7 @@ export default function EventPageClient({
   return (
     <div className="min-h-screen bg-gray-50 pb-32 lg:pb-10">
       {/* Hero */}
-      <Hero event={event} group={group} colour={colour} />
+      <Hero event={event} group={group} colour={colour} organiser={organiser} />
 
       {/* Info bar */}
       <InfoBar event={event} colour={colour} memberCount={memberCount} guestCount={guestCount} />
@@ -1142,6 +1163,20 @@ export default function EventPageClient({
                   {event.description}
                 </div>
               </div>
+            )}
+
+            {/* Contact organiser */}
+            {organiser && (
+              <button
+                onClick={() => setContactModalOpen(true)}
+                className="flex items-center gap-2 text-sm font-semibold transition-opacity hover:opacity-75"
+                style={{ color: colour }}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 0 1-2.25 2.25h-15a2.25 2.25 0 0 1-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25m19.5 0v.243a2.25 2.25 0 0 1-1.07 1.916l-7.5 4.615a2.25 2.25 0 0 1-2.36 0L3.32 8.91a2.25 2.25 0 0 1-1.07-1.916V6.75" />
+                </svg>
+                Contact organiser
+              </button>
             )}
 
             {/* Shared Cost Ticker — mobile only */}
@@ -1302,6 +1337,17 @@ export default function EventPageClient({
       <div className="lg:hidden">
         <ShareButton eventId={event.id} title={event.title} colour={colour} />
       </div>
+
+      {/* Contact organiser modal */}
+      {contactModalOpen && (
+        <ContactOrganiserModal
+          groupId={group.id}
+          groupName={group.name}
+          colour={colour}
+          currentUser={currentUser ? { name: currentUser.fullName, email: '' } : null}
+          onClose={() => setContactModalOpen(false)}
+        />
+      )}
     </div>
   )
 }

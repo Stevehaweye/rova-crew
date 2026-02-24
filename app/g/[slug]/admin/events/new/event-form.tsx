@@ -537,10 +537,15 @@ function LivePreview({
 export default function EventForm({
   group,
   userId,
+  eventId,
+  initialData,
 }: {
   group: GroupProps
   userId: string
+  eventId?: string
+  initialData?: Partial<EventFormData> & { existingCoverUrl?: string | null }
 }) {
+  const isEditMode = !!eventId
   const router = useRouter()
   const coverRef = useRef<HTMLInputElement>(null)
   const colour = hex(group.primaryColour)
@@ -550,24 +555,24 @@ export default function EventForm({
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const [form, setForm] = useState<EventFormData>({
-    title: '',
-    description: '',
-    paymentType: 'free',
-    ticketPrice: '',
-    totalCost: '',
-    minParticipants: '',
-    startDate: undefined,
-    startTime: '',
-    endDate: undefined,
-    endTime: '',
-    locationName: '',
-    mapsUrl: '',
-    capacityEnabled: false,
-    capacity: '',
+    title: initialData?.title ?? '',
+    description: initialData?.description ?? '',
+    paymentType: initialData?.paymentType ?? 'free',
+    ticketPrice: initialData?.ticketPrice ?? '',
+    totalCost: initialData?.totalCost ?? '',
+    minParticipants: initialData?.minParticipants ?? '',
+    startDate: initialData?.startDate,
+    startTime: initialData?.startTime ?? '',
+    endDate: initialData?.endDate,
+    endTime: initialData?.endTime ?? '',
+    locationName: initialData?.locationName ?? '',
+    mapsUrl: initialData?.mapsUrl ?? '',
+    capacityEnabled: initialData?.capacityEnabled ?? false,
+    capacity: initialData?.capacity ?? '',
     coverFile: null,
-    coverPreview: null,
-    membersOnly: true,
-    allowGuests: true,
+    coverPreview: initialData?.existingCoverUrl ?? null,
+    membersOnly: initialData?.membersOnly ?? true,
+    allowGuests: initialData?.allowGuests ?? true,
   })
 
   function patch(updates: Partial<EventFormData>) {
@@ -656,8 +661,8 @@ export default function EventForm({
     try {
       const supabase = createClient()
 
-      // Upload cover image
-      let coverUrl: string | null = null
+      // Upload cover image (only if user selected a new file)
+      let coverUrl: string | null = initialData?.existingCoverUrl ?? null
       if (form.coverFile) {
         const ext = form.coverFile.name.split('.').pop() ?? 'jpg'
         const path = `events/${group.slug}/${Date.now()}.${ext}`
@@ -671,50 +676,72 @@ export default function EventForm({
             .from('group-logos')
             .getPublicUrl(upload.path).data.publicUrl
         }
+      } else if (!form.coverPreview) {
+        // User removed the cover image
+        coverUrl = null
       }
 
       const startsAt = combineDateAndTime(form.startDate!, form.startTime).toISOString()
       const endsAt = combineDateAndTime(form.endDate!, form.endTime).toISOString()
 
-      const { data: eventData, error: eventErr } = await supabase
-        .from('events')
-        .insert({
-          group_id: group.id,
-          created_by: userId,
-          title: form.title.trim(),
-          description: form.description.trim() || null,
-          location: form.locationName.trim() || null,
-          maps_url: form.mapsUrl.trim() || null,
-          starts_at: startsAt,
-          ends_at: endsAt,
-          cover_url: coverUrl,
-          max_capacity: form.capacityEnabled && form.capacity ? parseInt(form.capacity) : null,
-          payment_type: form.paymentType,
-          price_pence: form.paymentType === 'fixed' ? Math.round(parseFloat(form.ticketPrice) * 100) : null,
-          total_cost_pence: form.paymentType === 'shared_cost' ? Math.round(parseFloat(form.totalCost) * 100) : null,
-          min_participants: form.paymentType === 'shared_cost' ? parseInt(form.minParticipants) : null,
-          allow_guest_rsvp: form.allowGuests,
-        })
-        .select('id')
-        .single()
+      const eventPayload = {
+        title: form.title.trim(),
+        description: form.description.trim() || null,
+        location: form.locationName.trim() || null,
+        maps_url: form.mapsUrl.trim() || null,
+        starts_at: startsAt,
+        ends_at: endsAt,
+        cover_url: coverUrl,
+        max_capacity: form.capacityEnabled && form.capacity ? parseInt(form.capacity) : null,
+        payment_type: form.paymentType,
+        price_pence: form.paymentType === 'fixed' ? Math.round(parseFloat(form.ticketPrice) * 100) : null,
+        total_cost_pence: form.paymentType === 'shared_cost' ? Math.round(parseFloat(form.totalCost) * 100) : null,
+        min_participants: form.paymentType === 'shared_cost' ? parseInt(form.minParticipants) : null,
+        allow_guest_rsvp: form.allowGuests,
+      }
 
-      if (eventErr) throw eventErr
+      let resultEventId: string
 
-      // Create Stripe Product + Price for fixed-price events
-      if (eventData && form.paymentType === 'fixed' && group.hasStripeAccount) {
-        try {
-          await fetch('/api/stripe/create-product', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              eventId: eventData.id,
-              title: form.title.trim(),
-              priceAmount: parseFloat(form.ticketPrice),
-              groupName: group.name,
-            }),
+      if (isEditMode) {
+        // Update existing event
+        const { error: updateErr } = await supabase
+          .from('events')
+          .update(eventPayload)
+          .eq('id', eventId)
+
+        if (updateErr) throw updateErr
+        resultEventId = eventId
+      } else {
+        // Insert new event
+        const { data: eventData, error: eventErr } = await supabase
+          .from('events')
+          .insert({
+            ...eventPayload,
+            group_id: group.id,
+            created_by: userId,
           })
-        } catch (err) {
-          console.error('[event-form] Stripe product creation error:', err)
+          .select('id')
+          .single()
+
+        if (eventErr) throw eventErr
+        resultEventId = eventData.id
+
+        // Create Stripe Product + Price for fixed-price events
+        if (form.paymentType === 'fixed' && group.hasStripeAccount) {
+          try {
+            await fetch('/api/stripe/create-product', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                eventId: resultEventId,
+                title: form.title.trim(),
+                priceAmount: parseFloat(form.ticketPrice),
+                groupName: group.name,
+              }),
+            })
+          } catch (err) {
+            console.error('[event-form] Stripe product creation error:', err)
+          }
         }
       }
 
@@ -754,7 +781,7 @@ export default function EventForm({
             </span>
           </Link>
           <span className="text-gray-300 text-lg">·</span>
-          <span className="text-sm font-semibold text-gray-600">Create event</span>
+          <span className="text-sm font-semibold text-gray-600">{isEditMode ? 'Edit event' : 'Create event'}</span>
         </div>
       </nav>
 
@@ -762,9 +789,12 @@ export default function EventForm({
 
         {/* Page heading */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Create an event</h1>
+          <h1 className="text-3xl font-bold text-gray-900">{isEditMode ? 'Edit event' : 'Create an event'}</h1>
           <p className="text-gray-500 mt-1.5 text-sm">
-            Schedule a meetup, session, or social for <strong>{group.name}</strong>.
+            {isEditMode
+              ? <>Update the details for this event.</>
+              : <>Schedule a meetup, session, or social for <strong>{group.name}</strong>.</>
+            }
           </p>
         </div>
 
@@ -1181,10 +1211,10 @@ export default function EventForm({
                 {submitting ? (
                   <>
                     <Spinner />
-                    Creating event&hellip;
+                    {isEditMode ? 'Saving changes\u2026' : 'Creating event\u2026'}
                   </>
                 ) : (
-                  'Create event →'
+                  isEditMode ? 'Save changes' : 'Create event \u2192'
                 )}
               </button>
 

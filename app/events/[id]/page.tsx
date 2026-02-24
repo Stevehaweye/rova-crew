@@ -64,6 +64,7 @@ export default async function EventPage({
     guestRsvps,
     userRsvpResult,
     profileResult,
+    organiserResult,
   ] = await Promise.all([
     // Member RSVP count (going + maybe)
     supabase
@@ -115,6 +116,13 @@ export default async function EventPage({
           .eq('id', user.id)
           .maybeSingle()
       : Promise.resolve({ data: null }),
+
+    // Event organiser profile
+    supabase
+      .from('profiles')
+      .select('full_name, avatar_url')
+      .eq('id', event.created_by)
+      .maybeSingle(),
   ])
 
   const memberGoingCount = memberRsvpCount.count ?? 0
@@ -143,6 +151,7 @@ export default async function EventPage({
         pricePence: event.price_pence ?? null,
       }}
       group={{
+        id: event.group_id,
         name: group.name,
         slug: group.slug,
         logoUrl: group.logo_url,
@@ -181,6 +190,10 @@ export default async function EventPage({
           ? { id: userRsvpResult.data.id, status: userRsvpResult.data.status as 'going' | 'maybe' | 'not_going' }
           : null
       }
+      organiser={organiserResult.data ? {
+        name: organiserResult.data.full_name,
+        avatarUrl: organiserResult.data.avatar_url,
+      } : null}
     />
   )
 }

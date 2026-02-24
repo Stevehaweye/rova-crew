@@ -19,15 +19,27 @@ interface Props {
     payoutsEnabled: boolean
     detailsSubmitted: boolean
   } | null
+  membershipFee: {
+    enabled: boolean
+    feePence: number | null
+  }
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function SettingsClient({ group, stripe }: Props) {
+export default function SettingsClient({ group, stripe, membershipFee }: Props) {
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
+
+  // Membership fee state
+  const [feeEnabled, setFeeEnabled] = useState(membershipFee.enabled)
+  const [feePounds, setFeePounds] = useState(
+    membershipFee.feePence ? (membershipFee.feePence / 100).toFixed(2) : ''
+  )
+  const [feeSaving, setFeeSaving] = useState(false)
+  const [feeError, setFeeError] = useState('')
 
   // Show toast on return from Stripe
   useEffect(() => {
@@ -79,6 +91,41 @@ export default function SettingsClient({ group, stripe }: Props) {
     } catch {
       setError('Network error. Please try again.')
       setLoading(false)
+    }
+  }
+
+  async function handleSaveFee() {
+    setFeeSaving(true)
+    setFeeError('')
+
+    try {
+      const feePence = feeEnabled ? Math.round(parseFloat(feePounds || '0') * 100) : 0
+
+      if (feeEnabled && feePence < 100) {
+        setFeeError('Fee must be at least £1.00')
+        setFeeSaving(false)
+        return
+      }
+
+      const res = await fetch(`/api/groups/${group.slug}/membership-fee`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: feeEnabled, fee_pence: feePence }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        setFeeError(data.error || 'Something went wrong.')
+        setFeeSaving(false)
+        return
+      }
+
+      setToast(feeEnabled ? `Membership fee set to £${(feePence / 100).toFixed(2)}/month` : 'Membership fee disabled')
+      setFeeSaving(false)
+    } catch {
+      setFeeError('Network error. Please try again.')
+      setFeeSaving(false)
     }
   }
 
@@ -233,6 +280,81 @@ export default function SettingsClient({ group, stripe }: Props) {
             )}
           </div>
         </section>
+
+        {/* ── Monthly Membership Fee ─────────────────────────────── */}
+        {stripe?.chargesEnabled && (
+          <section className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center">
+                <svg className="w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0 1 15.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 0 1 3 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 0 0-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 0 1-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 0 0 3 15h-.75M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm3 0h.008v.008H18V10.5Zm-12 0h.008v.008H6V10.5Z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-900">Monthly Membership Fee</p>
+                <p className="text-xs text-gray-500">Charge members a recurring fee to join your group</p>
+              </div>
+            </div>
+
+            <div className="px-5 py-5 space-y-4">
+              {/* Toggle */}
+              <label className="flex items-center justify-between cursor-pointer">
+                <span className="text-sm font-medium text-gray-700">Enable membership fee</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={feeEnabled}
+                  onClick={() => setFeeEnabled(!feeEnabled)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    feeEnabled ? 'bg-teal-500' : 'bg-gray-200'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${
+                      feeEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </label>
+
+              {/* Price input */}
+              {feeEnabled && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-1.5">
+                    Monthly fee
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 font-semibold">£</span>
+                    <input
+                      type="number"
+                      min="1"
+                      step="0.01"
+                      value={feePounds}
+                      onChange={(e) => setFeePounds(e.target.value)}
+                      placeholder="5.00"
+                      className="w-full pl-7 pr-20 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-medium">per month</span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1.5">Minimum £1.00. ROVA Crew takes a 5% platform fee.</p>
+                </div>
+              )}
+
+              {feeError && (
+                <p className="text-xs text-red-500">{feeError}</p>
+              )}
+
+              <button
+                onClick={handleSaveFee}
+                disabled={feeSaving}
+                className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                style={{ backgroundColor: group.colour }}
+              >
+                {feeSaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </section>
+        )}
       </main>
     </div>
   )

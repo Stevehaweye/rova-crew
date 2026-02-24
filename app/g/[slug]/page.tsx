@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import { JoinCard } from './join-button'
+import ContactOrganiserButton from '@/components/ContactOrganiserButton'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -547,9 +548,9 @@ export default async function GroupPage({
     return <PrivateGroupView group={group} colour={hex(group.primary_colour)} />
   }
 
-  // Parallel fetch: member count + member profiles (up to 12) + upcoming events
+  // Parallel fetch: member count + member profiles (up to 12) + upcoming events + organiser
   const now = new Date().toISOString()
-  const [countResult, membersResult, upcomingEventsResult] = await Promise.all([
+  const [countResult, membersResult, upcomingEventsResult, organiserResult] = await Promise.all([
     supabase
       .from('group_members')
       .select('*', { count: 'exact', head: true })
@@ -569,6 +570,14 @@ export default async function GroupPage({
       .gte('starts_at', now)
       .order('starts_at', { ascending: true })
       .limit(3),
+    supabase
+      .from('group_members')
+      .select('profiles ( full_name, avatar_url )')
+      .eq('group_id', group.id)
+      .eq('role', 'super_admin')
+      .eq('status', 'approved')
+      .limit(1)
+      .maybeSingle(),
   ])
 
   const memberCount = countResult.count ?? 0
@@ -631,6 +640,21 @@ export default async function GroupPage({
 
   const nextEventDate = upcomingEvents.length > 0 ? upcomingEvents[0].startsAt : null
 
+  const organiserProfile = organiserResult.data?.profiles as unknown as { full_name: string; avatar_url: string | null } | null
+
+  // Fetch current user's profile for contact form auto-fill
+  let currentUserProfile: { name: string; email: string } | null = null
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name, email')
+      .eq('id', user.id)
+      .maybeSingle()
+    if (profile) {
+      currentUserProfile = { name: profile.full_name ?? '', email: profile.email ?? user.email ?? '' }
+    }
+  }
+
   const colour = hex(group.primary_colour)
   const initialStatus = membership?.status as 'approved' | 'pending' | null ?? null
 
@@ -670,7 +694,45 @@ export default async function GroupPage({
               memberCount={memberCount}
               initialStatus={initialStatus}
               isLoggedIn={!!user}
+              membershipFeeEnabled={group.membership_fee_enabled ?? false}
+              membershipFeePence={group.membership_fee_pence ?? null}
             />
+            {/* Organised by */}
+            {organiserProfile && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Organised by</h3>
+                <div className="flex items-center gap-3">
+                  {organiserProfile.avatar_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={organiserProfile.avatar_url}
+                      alt={organiserProfile.full_name}
+                      className="w-10 h-10 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm"
+                      style={{ backgroundColor: colour }}
+                    >
+                      {initials(organiserProfile.full_name)}
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">{organiserProfile.full_name}</p>
+                    <p className="text-xs text-gray-400">Group admin</p>
+                  </div>
+                </div>
+                <div className="mt-4">
+                  <ContactOrganiserButton
+                    groupId={group.id}
+                    groupName={group.name}
+                    colour={colour}
+                    currentUser={currentUserProfile}
+                  />
+                </div>
+              </div>
+            )}
+
             <HallOfFame colour={colour} />
           </div>
         </div>

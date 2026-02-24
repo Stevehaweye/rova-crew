@@ -18,6 +18,8 @@ export interface JoinCardProps {
   /** null = not a member, 'approved' | 'pending' from DB */
   initialStatus: 'approved' | 'pending' | null
   isLoggedIn: boolean
+  membershipFeeEnabled?: boolean
+  membershipFeePence?: number | null
 }
 
 // ─── Animated checkmark ───────────────────────────────────────────────────────
@@ -85,6 +87,8 @@ export function JoinCard({
   memberCount,
   initialStatus,
   isLoggedIn,
+  membershipFeeEnabled,
+  membershipFeePence,
 }: JoinCardProps) {
   const router = useRouter()
 
@@ -105,6 +109,9 @@ export function JoinCard({
     }
   }, [status])
 
+  const isPaidGroup = membershipFeeEnabled && membershipFeePence && membershipFeePence > 0
+  const feeLabel = isPaidGroup ? `£${(membershipFeePence / 100).toFixed(2)}/month` : null
+
   async function handleJoin() {
     if (!isLoggedIn) {
       router.push(`/auth?next=/g/${groupSlug}`)
@@ -114,6 +121,38 @@ export function JoinCard({
     setStatus('loading')
     setErrorMsg('')
 
+    // For paid groups, redirect to subscription checkout
+    if (isPaidGroup) {
+      try {
+        const res = await fetch('/api/stripe/subscription-checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ group_id: groupId }),
+        })
+
+        const data = await res.json()
+
+        if (!res.ok) {
+          setStatus('error')
+          setErrorMsg(data.error || 'Something went wrong.')
+          return
+        }
+
+        if (data.url) {
+          window.location.href = data.url
+          return
+        }
+
+        setStatus('error')
+        setErrorMsg('Could not create checkout session.')
+      } catch {
+        setStatus('error')
+        setErrorMsg('Network error. Please try again.')
+      }
+      return
+    }
+
+    // Free group — direct join
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
@@ -205,7 +244,9 @@ export function JoinCard({
             style={{ color: groupColour }}
           >
             {isLoading ? (
-              <><Spinner /> Joining&hellip;</>
+              <><Spinner /> {isPaidGroup ? 'Redirecting\u2026' : 'Joining\u2026'}</>
+            ) : isPaidGroup ? (
+              `Join — ${feeLabel} \u2192`
             ) : requireApproval ? (
               'Request to join \u2192'
             ) : (

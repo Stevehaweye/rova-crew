@@ -47,6 +47,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true })
     }
 
+    // Retrieve payment intent to get receipt URL
+    let stripePaymentId: string | null = null
+    let stripeReceiptUrl: string | null = null
+    const paymentIntentId = typeof session.payment_intent === 'string' ? session.payment_intent : null
+    if (paymentIntentId) {
+      try {
+        const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {
+          expand: ['latest_charge'],
+        })
+        stripePaymentId = pi.id
+        const charge = pi.latest_charge as Stripe.Charge | null
+        stripeReceiptUrl = charge?.receipt_url ?? null
+      } catch (err) {
+        console.error('[webhook] Failed to retrieve payment intent:', err)
+      }
+    }
+
     // Update payment record (updated_at handled by DB trigger)
     await supabase
       .from('payments')
@@ -117,6 +134,8 @@ export async function POST(request: NextRequest) {
           paidAmount: paidPence ? `\u00a3${(paidPence / 100).toFixed(2)}` : null,
           isGuest: true,
           signUpUrl,
+          stripePaymentId,
+          stripeReceiptUrl,
         }).catch((err: unknown) =>
           console.error('[webhook] email error:', err)
         )
@@ -182,6 +201,8 @@ export async function POST(request: NextRequest) {
           paidAmount: paidPence ? `\u00a3${(paidPence / 100).toFixed(2)}` : null,
           isGuest: false,
           signUpUrl: null,
+          stripePaymentId,
+          stripeReceiptUrl,
         }).catch((err: unknown) =>
           console.error('[webhook] member email error:', err)
         )

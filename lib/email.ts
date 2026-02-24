@@ -270,3 +270,72 @@ export async function sendGuestConversionEmail({
     return { success: false, error: message }
   }
 }
+
+// ─── 3. Contact Organiser ────────────────────────────────────────────────────
+
+interface ContactOrganiserParams {
+  adminEmail: string
+  adminName: string
+  senderName: string
+  senderEmail: string
+  message: string
+  groupName: string
+}
+
+export async function sendContactOrganiserEmail({
+  adminEmail,
+  adminName,
+  senderName,
+  senderEmail,
+  message,
+  groupName,
+}: ContactOrganiserParams): Promise<{ success: true } | { success: false; error: string }> {
+  const firstName = adminName.split(' ')[0]
+
+  const content = `
+    <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#111827;line-height:1.3;">
+      New message from ${senderName}
+    </h1>
+    <p style="margin:0 0 20px;font-size:15px;color:#6b7280;line-height:1.6;">
+      Hey ${firstName}, someone has sent you a message about <strong style="color:#111827;">${groupName}</strong>.
+    </p>
+
+    ${infoBox([
+      { label: 'From', value: senderName },
+      { label: 'Email', value: senderEmail },
+      { label: 'Group', value: groupName },
+    ])}
+
+    <div style="margin:24px 0;padding:20px 24px;background-color:#f9fafb;border-radius:12px;border-left:4px solid #0D7377;">
+      <p style="margin:0;font-size:14px;color:#374151;line-height:1.7;white-space:pre-line;">${message}</p>
+    </div>
+
+    <p style="margin:24px 0 0;font-size:14px;color:#6b7280;line-height:1.6;">
+      You can reply directly to this email — it will go to <strong>${senderEmail}</strong>.
+    </p>
+  `
+
+  try {
+    const { error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: adminEmail,
+      replyTo: senderEmail,
+      subject: `[${groupName}] Message from ${senderName}`,
+      html: emailLayout(content),
+    })
+
+    if (error) {
+      console.error('[email] contact organiser error:', error)
+      return { success: false, error: error.message }
+    }
+
+    return { success: true }
+  } catch (err) {
+    const msg =
+      err && typeof err === 'object' && 'message' in err
+        ? (err as { message: string }).message
+        : 'Failed to send email'
+    console.error('[email] contact organiser error:', err)
+    return { success: false, error: msg }
+  }
+}

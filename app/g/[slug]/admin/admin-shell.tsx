@@ -964,6 +964,12 @@ export default function AdminShell({
                           >
                             View
                           </Link>
+                          <Link
+                            href={`/g/${group.slug}/admin/events/${ev.id}/edit`}
+                            className="text-[11px] font-semibold px-2.5 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+                          >
+                            Edit
+                          </Link>
                         </div>
                       </div>
                     )

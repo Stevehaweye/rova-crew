@@ -30,6 +30,8 @@ export interface RsvpConfirmationEmailProps {
   paidAmount: string | null
   isGuest: boolean
   signUpUrl: string | null
+  stripePaymentId?: string | null
+  stripeReceiptUrl?: string | null
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -60,6 +62,8 @@ export default function RsvpConfirmationEmail({
   paidAmount = null,
   isGuest = false,
   signUpUrl = null,
+  stripePaymentId = null,
+  stripeReceiptUrl = null,
 }: RsvpConfirmationEmailProps) {
   const firstName = recipientName.split(' ')[0]
 
@@ -219,11 +223,45 @@ export default function RsvpConfirmationEmail({
                     </Text>
                     <Text style={{ margin: '2px 0 0', fontSize: '12px', color: GRAY_400 }}>
                       Payment confirmed
+                      {stripePaymentId && <> &middot; Ref: {stripePaymentId.slice(-8).toUpperCase()}</>}
                     </Text>
                   </Column>
                 </Row>
               )}
             </Section>
+
+            {/* Payment receipt link */}
+            {paidAmount && stripeReceiptUrl && (
+              <Section style={{ padding: '0 32px', marginTop: '16px' }}>
+                <Section
+                  style={{
+                    backgroundColor: '#F0FDF4',
+                    borderRadius: '12px',
+                    padding: '16px 20px',
+                    textAlign: 'center' as const,
+                  }}
+                >
+                  <Text style={{ margin: '0 0 4px', fontSize: '13px', fontWeight: 700, color: '#065F46' }}>
+                    Payment Receipt
+                  </Text>
+                  <Text style={{ margin: '0 0 12px', fontSize: '12px', color: '#6B7280' }}>
+                    {eventTitle} &middot; {paidAmount}
+                    {stripePaymentId && <> &middot; Ref: {stripePaymentId.slice(-8).toUpperCase()}</>}
+                  </Text>
+                  <Link
+                    href={stripeReceiptUrl}
+                    style={{
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      color: TEAL,
+                      textDecoration: 'none',
+                    }}
+                  >
+                    View full receipt &rarr;
+                  </Link>
+                </Section>
+              </Section>
+            )}
 
             {/* QR Code section */}
             <Hr style={{ borderColor: GRAY_100, margin: '28px 32px' }} />

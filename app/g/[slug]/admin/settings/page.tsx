@@ -85,6 +85,14 @@ export default async function SettingsPage({
     ? group.primary_colour
     : `#${group.primary_colour ?? '0D7377'}`
 
+  // Fetch membership fee settings
+  const serviceClient = createServiceClient()
+  const { data: groupFeeData } = await serviceClient
+    .from('groups')
+    .select('membership_fee_enabled, membership_fee_pence')
+    .eq('id', group.id)
+    .single()
+
   return (
     <SettingsClient
       group={{
@@ -103,6 +111,10 @@ export default async function SettingsPage({
             }
           : null
       }
+      membershipFee={{
+        enabled: groupFeeData?.membership_fee_enabled ?? false,
+        feePence: groupFeeData?.membership_fee_pence ?? null,
+      }}
     />
   )
 }

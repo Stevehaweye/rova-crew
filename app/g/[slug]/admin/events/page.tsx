@@ -276,6 +276,14 @@ export default async function AdminEventsPage({
                     >
                       View
                     </Link>
+                    {!isPast && (
+                      <Link
+                        href={`/g/${group.slug}/admin/events/${ev.id}/edit`}
+                        className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                      >
+                        Edit
+                      </Link>
+                    )}
                     {isPast && (
                       <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-400 px-2 py-1 rounded-full">
                         Ended
