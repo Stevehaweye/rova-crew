@@ -28,11 +28,15 @@ export async function POST(
 
     const serviceClient = createServiceClient()
 
-    const { error } = await serviceClient.from('message_reactions').insert({
+    console.log('[chat/reactions] inserting:', { messageId, userId: user.id, emoji })
+
+    const { data: inserted, error } = await serviceClient.from('message_reactions').insert({
       message_id: messageId,
       user_id: user.id,
       emoji,
-    })
+    }).select('id')
+
+    console.log('[chat/reactions] result:', { inserted, error })
 
     if (error) {
       if (error.code === '23505') {
@@ -42,7 +46,7 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to add reaction' }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, id: inserted?.[0]?.id })
   } catch (err) {
     console.error('[chat/reactions] error:', err)
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
