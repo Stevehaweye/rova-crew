@@ -697,6 +697,30 @@ export default async function GroupPage({
               membershipFeeEnabled={group.membership_fee_enabled ?? false}
               membershipFeePence={group.membership_fee_pence ?? null}
             />
+            {/* Group Chat — only for approved members */}
+            {initialStatus === 'approved' && (
+              <Link
+                href={`/g/${group.slug}/chat`}
+                className="block bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md hover:border-gray-200 transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
+                    style={{ backgroundColor: colour + '15' }}
+                  >
+                    💬
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-gray-900">Group Chat</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Join the conversation</p>
+                  </div>
+                  <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                  </svg>
+                </div>
+              </Link>
+            )}
+
             {/* Organised by */}
             {organiserProfile && (
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
