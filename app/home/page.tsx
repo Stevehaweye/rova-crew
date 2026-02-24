@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import UserMenu from './user-menu'
+import PushPermissionBanner from '@/components/PushPermissionBanner'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -603,6 +604,7 @@ export default async function HomePage() {
       <TopNav profile={profile} />
 
       <main>
+        <PushPermissionBanner />
         {hasGroups ? (
           <HasGroupsContent
             profile={profile}
