@@ -34,6 +34,7 @@ interface Props {
   initialAnnouncements: Announcement[]
   isAdmin: boolean
   groupColour: string
+  groupSlug: string
 }
 
 const EMOJI_OPTIONS = ['👍', '❤️', '🔥', '👏', '😂', '💯', '🎉', '👀']
@@ -57,6 +58,7 @@ export default function AnnouncementsFeed({
   initialAnnouncements,
   isAdmin,
   groupColour,
+  groupSlug,
 }: Props) {
   const [announcements, setAnnouncements] = useState<Announcement[]>(initialAnnouncements)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -403,6 +405,16 @@ export default function AnnouncementsFeed({
                         >
                           <span className="text-xs">🗑️</span>
                           Delete
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEmojiPickerOpenId(null)
+                            window.location.href = `/g/${groupSlug}/admin/blast?title=Announcement&body=${encodeURIComponent(a.content.slice(0, 300))}`
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                        >
+                          <span className="text-xs">📢</span>
+                          Blast this
                         </button>
                       </div>
                     </>

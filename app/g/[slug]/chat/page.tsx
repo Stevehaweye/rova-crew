@@ -29,7 +29,7 @@ export default async function GroupChatPage({
   // Membership check (must be approved)
   const { data: membership } = await supabase
     .from('group_members')
-    .select('role, status')
+    .select('role, status, muted_until')
     .eq('group_id', group.id)
     .eq('user_id', user.id)
     .maybeSingle()
@@ -39,6 +39,7 @@ export default async function GroupChatPage({
   }
 
   const isAdmin = membership.role === 'super_admin' || membership.role === 'co_admin'
+  const mutedUntil: string | null = membership.muted_until ?? null
 
   const serviceClient = createServiceClient()
 
@@ -74,7 +75,7 @@ export default async function GroupChatPage({
   // Fetch last 50 messages
   const { data: messages } = await serviceClient
     .from('messages')
-    .select('id, sender_id, content, content_type, image_url, is_pinned, edited_at, deleted_at, reply_to_id, created_at, profiles:sender_id ( full_name, avatar_url )')
+    .select('id, sender_id, content, content_type, image_url, is_pinned, edited_at, deleted_at, deleted_by, reply_to_id, created_at, profiles:sender_id ( full_name, avatar_url )')
     .eq('channel_id', channel.id)
     .order('created_at', { ascending: true })
     .limit(50)
@@ -137,6 +138,7 @@ export default async function GroupChatPage({
       isPinned: m.is_pinned,
       editedAt: m.edited_at,
       deletedAt: m.deleted_at,
+      deletedBy: m.deleted_by,
       createdAt: m.created_at,
       replyToId: m.reply_to_id,
       replyTo: m.reply_to_id ? replyMap[m.reply_to_id] ?? null : null,
@@ -178,6 +180,7 @@ export default async function GroupChatPage({
       isAdmin={isAdmin}
       initialMessages={initialMessages}
       members={chatMembers}
+      mutedUntil={mutedUntil}
     />
   )
 }

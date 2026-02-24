@@ -159,6 +159,7 @@ export default async function MemberAnnouncementsPage({
           initialAnnouncements={initialAnnouncements}
           isAdmin={false}
           groupColour={colour}
+          groupSlug={group.slug}
         />
       </main>
     </div>

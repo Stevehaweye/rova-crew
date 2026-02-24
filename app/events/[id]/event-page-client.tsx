@@ -106,6 +106,7 @@ interface Props {
   chatMembers: ChatMember[]
   chatIsArchived: boolean
   chatIsAdmin: boolean
+  chatMutedUntil: string | null
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -870,6 +871,7 @@ export default function EventPageClient({
   chatMembers,
   chatIsArchived,
   chatIsAdmin,
+  chatMutedUntil,
 }: Props) {
   const router = useRouter()
   const colour = hex(group.primaryColour)
@@ -1247,12 +1249,14 @@ export default function EventPageClient({
                 eventTitle={event.title}
                 eventStartsAt={event.startsAt}
                 eventEndsAt={event.endsAt}
+                groupSlug={group.slug}
                 groupColour={colour}
                 currentUserId={currentUser.id}
                 isAdmin={chatIsAdmin}
                 initialMessages={chatInitialMessages}
                 members={chatMembers}
                 isArchived={chatIsArchived}
+                mutedUntil={chatMutedUntil}
               />
             ) : (
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">

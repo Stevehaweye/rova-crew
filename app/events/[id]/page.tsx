@@ -138,6 +138,7 @@ export default async function EventPage({
   let chatInitialMessages: ChatMessage[] = []
   let chatMembers: ChatMember[] = []
   let chatIsAdmin = false
+  let chatMutedUntil: string | null = null
 
   // Compute archive status: 7 days after event ends
   const eventEndsAt = new Date(event.ends_at)
@@ -171,12 +172,13 @@ export default async function EventPage({
     if (user) {
       const { data: gmembership } = await serviceClient
         .from('group_members')
-        .select('role')
+        .select('role, muted_until')
         .eq('group_id', event.group_id)
         .eq('user_id', user.id)
         .maybeSingle()
 
       chatIsAdmin = gmembership?.role === 'super_admin' || gmembership?.role === 'co_admin'
+      chatMutedUntil = gmembership?.muted_until ?? null
     }
 
     // If user is RSVPd, upsert channel_members.last_read_at
@@ -194,7 +196,7 @@ export default async function EventPage({
     // Fetch last 50 messages
     const { data: chatMessages } = await serviceClient
       .from('messages')
-      .select('id, sender_id, content, content_type, image_url, is_pinned, edited_at, deleted_at, reply_to_id, created_at, profiles:sender_id ( full_name, avatar_url )')
+      .select('id, sender_id, content, content_type, image_url, is_pinned, edited_at, deleted_at, deleted_by, reply_to_id, created_at, profiles:sender_id ( full_name, avatar_url )')
       .eq('channel_id', chatChannel.id)
       .order('created_at', { ascending: true })
       .limit(50)
@@ -257,6 +259,7 @@ export default async function EventPage({
         isPinned: m.is_pinned,
         editedAt: m.edited_at,
         deletedAt: m.deleted_at,
+        deletedBy: m.deleted_by,
         createdAt: m.created_at,
         replyToId: m.reply_to_id,
         replyTo: m.reply_to_id ? replyMap[m.reply_to_id] ?? null : null,
@@ -357,6 +360,7 @@ export default async function EventPage({
       chatMembers={chatMembers}
       chatIsArchived={chatIsArchived}
       chatIsAdmin={chatIsAdmin}
+      chatMutedUntil={chatMutedUntil}
     />
   )
 }

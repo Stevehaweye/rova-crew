@@ -68,6 +68,21 @@ export async function POST(
       return NextResponse.json({ error: 'Must RSVP to send messages' }, { status: 403 })
     }
 
+    // Mute check (admins are exempt)
+    const { data: gmembership } = await serviceClient
+      .from('group_members')
+      .select('role, muted_until')
+      .eq('group_id', event.group_id)
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (gmembership?.role === 'member' && gmembership?.muted_until && new Date(gmembership.muted_until) > new Date()) {
+      return NextResponse.json(
+        { error: 'You are muted', mutedUntil: gmembership.muted_until },
+        { status: 403 }
+      )
+    }
+
     // Insert message
     const { data: message, error } = await serviceClient
       .from('messages')

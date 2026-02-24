@@ -23,15 +23,20 @@ interface Props {
     enabled: boolean
     feePence: number | null
   }
+  dmEnabled: boolean
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function SettingsClient({ group, stripe, membershipFee }: Props) {
+export default function SettingsClient({ group, stripe, membershipFee, dmEnabled: initialDmEnabled }: Props) {
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
+
+  // DM state
+  const [dmOn, setDmOn] = useState(initialDmEnabled)
+  const [dmSaving, setDmSaving] = useState(false)
 
   // Membership fee state
   const [feeEnabled, setFeeEnabled] = useState(membershipFee.enabled)
@@ -127,6 +132,26 @@ export default function SettingsClient({ group, stripe, membershipFee }: Props) 
       setFeeError('Network error. Please try again.')
       setFeeSaving(false)
     }
+  }
+
+  async function handleSaveDm() {
+    setDmSaving(true)
+    try {
+      const res = await fetch(`/api/groups/${group.slug}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allow_dm: dmOn }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setToast(data.error || 'Failed to save')
+      } else {
+        setToast(dmOn ? 'Direct messages enabled' : 'Direct messages disabled')
+      }
+    } catch {
+      setToast('Network error. Please try again.')
+    }
+    setDmSaving(false)
   }
 
   return (
@@ -355,6 +380,56 @@ export default function SettingsClient({ group, stripe, membershipFee }: Props) 
             </div>
           </section>
         )}
+        {/* ── Direct Messages ──────────────────────────────────── */}
+        <section className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+              <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-900">Direct Messages</p>
+              <p className="text-xs text-gray-500">Allow members to message each other directly</p>
+            </div>
+          </div>
+
+          <div className="px-5 py-5 space-y-4">
+            <label className="flex items-center justify-between cursor-pointer">
+              <span className="text-sm font-medium text-gray-700">Enable direct messages</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={dmOn}
+                onClick={() => setDmOn(!dmOn)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  dmOn ? 'bg-teal-500' : 'bg-gray-200'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${
+                    dmOn ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </label>
+
+            <p className="text-xs text-gray-400">
+              {dmOn
+                ? 'Members can send private messages to other members they share a group with.'
+                : 'Direct messaging is disabled for this group.'}
+            </p>
+
+            <button
+              onClick={handleSaveDm}
+              disabled={dmSaving}
+              className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+              style={{ backgroundColor: group.colour }}
+            >
+              {dmSaving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </section>
       </main>
     </div>
   )

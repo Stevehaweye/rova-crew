@@ -45,6 +45,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not a member' }, { status: 403 })
     }
 
+    // Mute check (admins are exempt)
+    if (membership.role === 'member') {
+      const { data: memberRow } = await serviceClient
+        .from('group_members')
+        .select('muted_until')
+        .eq('group_id', groupId)
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (memberRow?.muted_until && new Date(memberRow.muted_until) > new Date()) {
+        return NextResponse.json(
+          { error: 'You are muted', mutedUntil: memberRow.muted_until },
+          { status: 403 }
+        )
+      }
+    }
+
     // Insert message
     const { data: message, error } = await serviceClient
       .from('messages')

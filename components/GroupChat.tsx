@@ -15,6 +15,7 @@ export interface ChatMessage {
   isPinned: boolean
   editedAt: string | null
   deletedAt: string | null
+  deletedBy: string | null
   createdAt: string
   replyToId: string | null
   replyTo: { content: string; senderName: string } | null
@@ -48,6 +49,7 @@ interface Props {
   isAdmin: boolean
   initialMessages: ChatMessage[]
   members: ChatMember[]
+  mutedUntil: string | null
 }
 
 const QUICK_EMOJIS = ['👍', '❤️', '😂', '😮', '👏', '🔥']
@@ -102,6 +104,7 @@ export default function GroupChat({
   isAdmin,
   initialMessages,
   members,
+  mutedUntil,
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages)
   const [body, setBody] = useState('')
@@ -116,6 +119,10 @@ export default function GroupChat({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editContent, setEditContent] = useState('')
   const [editSaving, setEditSaving] = useState(false)
+
+  // Mute
+  const [muteTarget, setMuteTarget] = useState<{ userId: string; fullName: string } | null>(null)
+  const [muteLoading, setMuteLoading] = useState(false)
 
   // @mentions
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
@@ -233,6 +240,7 @@ export default function GroupChat({
             isPinned: row.is_pinned,
             editedAt: row.edited_at,
             deletedAt: row.deleted_at,
+            deletedBy: null,
             createdAt: row.created_at,
             replyToId: row.reply_to_id,
             replyTo: replyToData,
@@ -265,6 +273,7 @@ export default function GroupChat({
             is_pinned: boolean
             edited_at: string | null
             deleted_at: string | null
+            deleted_by: string | null
           }
 
           setMessages((prev) =>
@@ -276,6 +285,7 @@ export default function GroupChat({
                     isPinned: row.is_pinned,
                     editedAt: row.edited_at,
                     deletedAt: row.deleted_at,
+                    deletedBy: row.deleted_by,
                   }
                 : m
             )
@@ -564,6 +574,23 @@ export default function GroupChat({
     await fetch(`/api/chat/${id}/pin`, { method: isPinned ? 'DELETE' : 'POST' })
   }
 
+  function handleMuteOpen(msg: ChatMessage) {
+    setActiveMenuId(null)
+    setMuteTarget({ userId: msg.sender.id, fullName: msg.sender.fullName })
+  }
+
+  async function handleMute(duration: '1h' | '24h' | '7d' | 'permanent') {
+    if (!muteTarget) return
+    setMuteLoading(true)
+    await fetch(`/api/groups/${groupSlug}/members/${muteTarget.userId}/mute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ duration }),
+    })
+    setMuteLoading(false)
+    setMuteTarget(null)
+  }
+
   function scrollToMessage(id: string) {
     const el = document.getElementById(`msg-${id}`)
     if (el) {
@@ -606,6 +633,27 @@ export default function GroupChat({
           <p className="text-[11px] text-gray-400">{members.length} member{members.length !== 1 ? 's' : ''}</p>
         </div>
       </header>
+
+      {/* ── Pinned message banner ──────────────────────────────────── */}
+      {(() => {
+        const pinned = [...messages].reverse().find(m => m.isPinned && !m.deletedAt)
+        if (!pinned) return null
+        return (
+          <button
+            onClick={() => scrollToMessage(pinned.id)}
+            className="flex items-center gap-2 px-4 py-2 bg-amber-50 border-b border-amber-100 w-full text-left hover:bg-amber-100/60 transition-colors flex-shrink-0"
+          >
+            <span className="text-sm select-none">📌</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-semibold text-amber-700">{pinned.sender.fullName}</p>
+              <p className="text-xs text-amber-600 truncate">{pinned.content}</p>
+            </div>
+            <svg className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+            </svg>
+          </button>
+        )
+      })()}
 
       {/* ── Messages ────────────────────────────────────────────────── */}
       <div
@@ -651,7 +699,11 @@ export default function GroupChat({
                 {/* Deleted message */}
                 {isDeleted && !isSystem && (
                   <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} ${showMeta ? 'mt-3' : 'mt-0.5'}`}>
-                    <p className="text-xs text-gray-400 italic px-3 py-1.5">This message was deleted</p>
+                    <p className="text-xs text-gray-400 italic px-3 py-1.5">
+                      {msg.deletedBy && msg.deletedBy !== msg.sender.id
+                        ? 'Message removed by admin'
+                        : 'This message was deleted'}
+                    </p>
                   </div>
                 )}
 
@@ -864,6 +916,7 @@ export default function GroupChat({
                       {isOwn && <button onClick={() => handleStartEdit(msg)} className="w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50">Edit</button>}
                       {(isOwn || isAdmin) && <button onClick={() => handleDelete(msg.id)} className="w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-red-600 hover:bg-red-50">Delete</button>}
                       {isAdmin && <button onClick={() => handlePin(msg.id, msg.isPinned)} className="w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50">{msg.isPinned ? 'Unpin' : 'Pin'}</button>}
+                      {isAdmin && !isOwn && <button onClick={() => handleMuteOpen(msg)} className="w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-orange-600 hover:bg-orange-50">Mute member</button>}
                       <button onClick={() => setActiveMenuId(null)} className="w-full text-center px-4 py-3 rounded-xl text-sm font-bold text-gray-400">Cancel</button>
                     </div>
                   </>
@@ -943,57 +996,97 @@ export default function GroupChat({
         </div>
       )}
 
-      {/* ── Compose bar ─────────────────────────────────────────────── */}
-      <div className="bg-white border-t border-gray-100 px-3 py-2 flex items-end gap-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 8px)' }}>
-        {/* Image upload */}
-        <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          disabled={imageUploading}
-          className="flex-shrink-0 w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"
-        >
-          {imageUploading ? (
-            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          ) : (
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z" />
-            </svg>
-          )}
-        </button>
+      {/* ── Compose bar / Muted banner ────────────────────────────── */}
+      {mutedUntil && new Date(mutedUntil) > new Date() ? (
+        <div className="bg-orange-50 border-t border-orange-100 px-4 py-3 text-center" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
+          <p className="text-sm text-orange-700 font-medium">
+            You are muted{mutedUntil !== '9999-12-31T23:59:59Z' && mutedUntil !== '9999-12-31T23:59:59.000Z'
+              ? ` until ${format(new Date(mutedUntil), 'd MMM, HH:mm')}`
+              : ''}
+          </p>
+          <p className="text-xs text-orange-500 mt-0.5">Contact an admin for help.</p>
+        </div>
+      ) : (
+        <div className="bg-white border-t border-gray-100 px-3 py-2 flex items-end gap-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 8px)' }}>
+          {/* Image upload */}
+          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={imageUploading}
+            className="flex-shrink-0 w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"
+          >
+            {imageUploading ? (
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z" />
+              </svg>
+            )}
+          </button>
 
-        {/* Text input */}
-        <textarea
-          ref={textareaRef}
-          value={body}
-          onChange={(e) => handleInputChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={`Message ${groupName}...`}
-          rows={1}
-          className="flex-1 px-3.5 py-2 rounded-2xl bg-gray-50 border border-gray-200 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition resize-none"
-          style={{ '--tw-ring-color': groupColour, maxHeight: '120px', minHeight: '38px' } as React.CSSProperties}
-          onInput={(e) => {
-            const t = e.target as HTMLTextAreaElement
-            t.style.height = 'auto'
-            t.style.height = Math.min(t.scrollHeight, 120) + 'px'
-          }}
-        />
+          {/* Text input */}
+          <textarea
+            ref={textareaRef}
+            value={body}
+            onChange={(e) => handleInputChange(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={`Message ${groupName}...`}
+            rows={1}
+            className="flex-1 px-3.5 py-2 rounded-2xl bg-gray-50 border border-gray-200 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition resize-none"
+            style={{ '--tw-ring-color': groupColour, maxHeight: '120px', minHeight: '38px' } as React.CSSProperties}
+            onInput={(e) => {
+              const t = e.target as HTMLTextAreaElement
+              t.style.height = 'auto'
+              t.style.height = Math.min(t.scrollHeight, 120) + 'px'
+            }}
+          />
 
-        {/* Send */}
-        <button
-          onClick={handleSend}
-          disabled={(!body.trim() && !imageUrl) || sending}
-          className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-white transition-opacity hover:opacity-90 disabled:opacity-30"
-          style={{ backgroundColor: groupColour }}
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
-          </svg>
-        </button>
-      </div>
+          {/* Send */}
+          <button
+            onClick={handleSend}
+            disabled={(!body.trim() && !imageUrl) || sending}
+            className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-white transition-opacity hover:opacity-90 disabled:opacity-30"
+            style={{ backgroundColor: groupColour }}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {/* ── Mute duration modal ───────────────────────────────────── */}
+      {muteTarget && (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/40" onClick={() => setMuteTarget(null)} />
+          <div className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-50 bg-white rounded-2xl shadow-2xl p-5 max-w-sm mx-auto">
+            <h3 className="text-base font-bold text-gray-900 mb-1">Mute {muteTarget.fullName}</h3>
+            <p className="text-xs text-gray-500 mb-4">They won&apos;t be able to send messages in this group&apos;s chats.</p>
+            <div className="space-y-2">
+              {([['1h', '1 hour'], ['24h', '24 hours'], ['7d', '7 days'], ['permanent', 'Permanently']] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  onClick={() => handleMute(key)}
+                  disabled={muteLoading}
+                  className="w-full text-left px-4 py-3 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 border border-gray-100 disabled:opacity-50"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setMuteTarget(null)}
+              className="w-full text-center mt-3 px-4 py-2.5 rounded-xl text-sm font-bold text-gray-400"
+            >
+              Cancel
+            </button>
+          </div>
+        </>
+      )}
 
       {/* ── Lightbox ────────────────────────────────────────────────── */}
       {lightboxUrl && (

@@ -116,6 +116,208 @@ function infoBox(rows: { label: string; value: string }[]): string {
 </table>`
 }
 
+// ─── Message Blast ──────────────────────────────────────────────────────────
+
+interface BlastEmailParams {
+  recipientEmail: string
+  recipientName: string
+  groupName: string
+  groupSlug: string
+  title: string
+  body: string
+}
+
+export async function sendBlastEmail({
+  recipientEmail,
+  recipientName,
+  groupName,
+  groupSlug,
+  title,
+  body,
+}: BlastEmailParams): Promise<{ success: true } | { success: false; error: string }> {
+  const firstName = recipientName.split(' ')[0]
+  const groupUrl = `${process.env.NEXT_PUBLIC_APP_URL}/g/${groupSlug}`
+
+  const content = `
+    <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#111827;line-height:1.3;">
+      ${title}
+    </h1>
+    <p style="margin:0 0 20px;font-size:15px;color:#6b7280;line-height:1.6;">
+      Hey ${firstName}, <strong style="color:#111827;">${groupName}</strong> has an important message for you:
+    </p>
+
+    <div style="margin:24px 0;padding:20px 24px;background-color:#f9fafb;border-radius:12px;border-left:4px solid #0D7377;">
+      <p style="margin:0;font-size:14px;color:#374151;line-height:1.7;white-space:pre-line;">${body}</p>
+    </div>
+
+    ${ctaButton('Go to ' + groupName + ' \\u2192', groupUrl)}
+  `
+
+  try {
+    const { error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: recipientEmail,
+      subject: `[${groupName}] ${title}`,
+      html: emailLayout(content),
+    })
+
+    if (error) {
+      console.error('[email] blast error:', error)
+      return { success: false, error: error.message }
+    }
+
+    return { success: true }
+  } catch (err) {
+    const message =
+      err && typeof err === 'object' && 'message' in err
+        ? (err as { message: string }).message
+        : 'Failed to send email'
+    console.error('[email] blast error:', err)
+    return { success: false, error: message }
+  }
+}
+
+// ─── Event Reminder ─────────────────────────────────────────────────────────
+
+interface ReminderEmailParams {
+  recipientEmail: string
+  recipientName: string
+  eventTitle: string
+  eventDate: string
+  eventTime: string
+  eventLocation: string
+  eventUrl: string
+  groupName: string
+  reminderType: '7day' | '48h_rsvpd'
+}
+
+export async function sendReminderEmail({
+  recipientEmail,
+  recipientName,
+  eventTitle,
+  eventDate,
+  eventTime,
+  eventLocation,
+  eventUrl,
+  groupName,
+  reminderType,
+}: ReminderEmailParams): Promise<{ success: true } | { success: false; error: string }> {
+  const firstName = recipientName.split(' ')[0]
+  const headline = reminderType === '7day' ? 'is in 1 week' : 'is in 2 days'
+
+  const content = `
+    <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#111827;line-height:1.3;">
+      ${eventTitle} ${headline}
+    </h1>
+    <p style="margin:0 0 20px;font-size:15px;color:#6b7280;line-height:1.6;">
+      Hey ${firstName}, just a heads-up — your event with <strong style="color:#111827;">${groupName}</strong> is coming up soon.
+    </p>
+
+    ${infoBox([
+      { label: 'Event', value: eventTitle },
+      { label: 'Date', value: eventDate },
+      { label: 'Time', value: eventTime },
+      { label: 'Location', value: eventLocation || 'TBC' },
+    ])}
+
+    ${ctaButton('View Event \\u2192', eventUrl)}
+  `
+
+  try {
+    const { error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: recipientEmail,
+      subject: `Reminder: ${eventTitle} — ${eventDate}`,
+      html: emailLayout(content),
+    })
+
+    if (error) {
+      console.error('[email] reminder error:', error)
+      return { success: false, error: error.message }
+    }
+
+    return { success: true }
+  } catch (err) {
+    const message =
+      err && typeof err === 'object' && 'message' in err
+        ? (err as { message: string }).message
+        : 'Failed to send email'
+    console.error('[email] reminder error:', err)
+    return { success: false, error: message }
+  }
+}
+
+// ─── Waitlist Promotion ─────────────────────────────────────────────────────
+
+interface WaitlistEmailParams {
+  recipientEmail: string
+  recipientName: string
+  eventTitle: string
+  eventDate: string
+  eventTime: string
+  eventLocation: string
+  eventUrl: string
+  groupName: string
+}
+
+export async function sendWaitlistEmail({
+  recipientEmail,
+  recipientName,
+  eventTitle,
+  eventDate,
+  eventTime,
+  eventLocation,
+  eventUrl,
+  groupName,
+}: WaitlistEmailParams): Promise<{ success: true } | { success: false; error: string }> {
+  const firstName = recipientName.split(' ')[0]
+
+  const content = `
+    <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#111827;line-height:1.3;">
+      You&rsquo;re in! 🎉
+    </h1>
+    <p style="margin:0 0 20px;font-size:15px;color:#6b7280;line-height:1.6;">
+      Great news ${firstName} — a spot opened up for <strong style="color:#111827;">${eventTitle}</strong> with ${groupName}, and you&rsquo;ve been moved off the waitlist.
+    </p>
+
+    ${infoBox([
+      { label: 'Event', value: eventTitle },
+      { label: 'Date', value: eventDate },
+      { label: 'Time', value: eventTime },
+      { label: 'Location', value: eventLocation || 'TBC' },
+    ])}
+
+    <p style="margin:24px 0 0;font-size:14px;color:#6b7280;line-height:1.6;">
+      Your RSVP has been automatically confirmed. See you there!
+    </p>
+
+    ${ctaButton('View Event \\u2192', eventUrl)}
+  `
+
+  try {
+    const { error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: recipientEmail,
+      subject: `A spot opened up for ${eventTitle}!`,
+      html: emailLayout(content),
+    })
+
+    if (error) {
+      console.error('[email] waitlist error:', error)
+      return { success: false, error: error.message }
+    }
+
+    return { success: true }
+  } catch (err) {
+    const message =
+      err && typeof err === 'object' && 'message' in err
+        ? (err as { message: string }).message
+        : 'Failed to send email'
+    console.error('[email] waitlist error:', err)
+    return { success: false, error: message }
+  }
+}
+
 // ─── 1. Guest RSVP Confirmation ──────────────────────────────────────────────
 
 interface RsvpConfirmationParams {

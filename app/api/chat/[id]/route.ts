@@ -14,21 +14,34 @@ async function verifyMemberForMessage(userId: string, messageId: string) {
   if (!message) return null
 
   const groupId = (message.channels as unknown as { group_id: string })?.group_id
-  if (!groupId) return null
 
-  const { data: membership } = await serviceClient
-    .from('group_members')
-    .select('role, status')
-    .eq('group_id', groupId)
+  if (groupId) {
+    const { data: membership } = await serviceClient
+      .from('group_members')
+      .select('role, status')
+      .eq('group_id', groupId)
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (membership?.status !== 'approved') return null
+
+    const isAdmin = membership.role === 'super_admin' || membership.role === 'co_admin'
+    const isOwner = message.sender_id === userId
+
+    return { serviceClient, message, isAdmin, isOwner }
+  }
+
+  // DM channel (group_id is null): verify via channel_members
+  const { data: cm } = await serviceClient
+    .from('channel_members')
+    .select('user_id')
+    .eq('channel_id', message.channel_id)
     .eq('user_id', userId)
     .maybeSingle()
 
-  if (membership?.status !== 'approved') return null
+  if (!cm) return null
 
-  const isAdmin = membership.role === 'super_admin' || membership.role === 'co_admin'
-  const isOwner = message.sender_id === userId
-
-  return { serviceClient, message, isAdmin, isOwner }
+  return { serviceClient, message, isAdmin: false, isOwner: message.sender_id === userId }
 }
 
 export async function PATCH(
@@ -114,7 +127,10 @@ export async function DELETE(
 
     const { error } = await result.serviceClient
       .from('messages')
-      .update({ deleted_at: new Date().toISOString() })
+      .update({
+        deleted_at: new Date().toISOString(),
+        deleted_by: result.isOwner ? null : user.id,
+      })
       .eq('id', id)
 
     if (error) {

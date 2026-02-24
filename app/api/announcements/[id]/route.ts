@@ -103,10 +103,13 @@ export async function DELETE(
       return NextResponse.json({ error: 'Not authorised' }, { status: 403 })
     }
 
-    // Soft delete
+    // Soft delete (announcements are always admin-deleted)
     const { error } = await result.serviceClient
       .from('messages')
-      .update({ deleted_at: new Date().toISOString() })
+      .update({
+        deleted_at: new Date().toISOString(),
+        deleted_by: user.id,
+      })
       .eq('id', id)
 
     if (error) {

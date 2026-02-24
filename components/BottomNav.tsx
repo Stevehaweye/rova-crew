@@ -1,11 +1,13 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 
 // ─── Route visibility ────────────────────────────────────────────────────────
 
-const NAV_ROUTES = ['/home', '/discover', '/wallet', '/profile', '/g']
+const NAV_ROUTES = ['/home', '/discover', '/wallet', '/profile', '/g', '/messages']
 
 function shouldShow(pathname: string): boolean {
   // Show on all nav routes, but hide on admin sub-pages (they have their own nav)
@@ -57,6 +59,19 @@ const TABS: Tab[] = [
     ),
   },
   {
+    href: '/messages',
+    label: 'Messages',
+    icon: (active) => (
+      <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" strokeWidth={active ? 2 : 1.5} stroke="currentColor">
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M8.625 12a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H8.25m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0H12m4.125 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 0 1-2.555-.337A5.972 5.972 0 0 1 5.41 20.97a5.969 5.969 0 0 1-.474-.065 4.48 4.48 0 0 0 .978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25Z"
+        />
+      </svg>
+    ),
+  },
+  {
     href: '/wallet',
     label: 'Card',
     icon: (active) => (
@@ -88,6 +103,51 @@ const TABS: Tab[] = [
 
 export default function BottomNav() {
   const pathname = usePathname()
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  // Fetch unread DM count
+  useEffect(() => {
+    let cancelled = false
+    const supabase = createClient()
+
+    async function fetchUnread() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user || cancelled) return
+
+      // Get DM channel memberships with last_read_at
+      const { data: memberships } = await supabase
+        .from('channel_members')
+        .select('channel_id, last_read_at, channels!inner ( type )')
+        .eq('user_id', user.id)
+
+      const dmMemberships = (memberships ?? []).filter(
+        (cm) => (cm.channels as unknown as { type: string })?.type === 'dm'
+      )
+
+      if (dmMemberships.length === 0) {
+        setUnreadCount(0)
+        return
+      }
+
+      // Check each channel for messages newer than last_read_at
+      let count = 0
+      for (const cm of dmMemberships) {
+        const { count: msgCount } = await supabase
+          .from('messages')
+          .select('*', { count: 'exact', head: true })
+          .eq('channel_id', cm.channel_id)
+          .gt('created_at', cm.last_read_at)
+
+        if (msgCount && msgCount > 0) count++
+      }
+
+      if (!cancelled) setUnreadCount(count)
+    }
+
+    fetchUnread()
+
+    return () => { cancelled = true }
+  }, [pathname])
 
   if (!shouldShow(pathname)) return null
 
@@ -103,10 +163,17 @@ export default function BottomNav() {
             <Link
               key={tab.href}
               href={tab.href}
-              className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors"
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors relative"
               style={{ color: active ? TEAL : GRAY }}
             >
-              {tab.icon(active)}
+              <div className="relative">
+                {tab.icon(active)}
+                {tab.href === '/messages' && unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </div>
               <span className="text-[10px] font-semibold leading-none">{tab.label}</span>
             </Link>
           )

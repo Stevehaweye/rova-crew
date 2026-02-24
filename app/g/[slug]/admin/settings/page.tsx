@@ -89,7 +89,7 @@ export default async function SettingsPage({
   const serviceClient = createServiceClient()
   const { data: groupFeeData } = await serviceClient
     .from('groups')
-    .select('membership_fee_enabled, membership_fee_pence')
+    .select('membership_fee_enabled, membership_fee_pence, allow_dm')
     .eq('id', group.id)
     .single()
 
@@ -115,6 +115,7 @@ export default async function SettingsPage({
         enabled: groupFeeData?.membership_fee_enabled ?? false,
         feePence: groupFeeData?.membership_fee_pence ?? null,
       }}
+      dmEnabled={groupFeeData?.allow_dm ?? true}
     />
   )
 }

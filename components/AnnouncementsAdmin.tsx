@@ -203,6 +203,7 @@ export default function AnnouncementsAdmin({
         initialAnnouncements={initialAnnouncements}
         isAdmin={true}
         groupColour={groupColour}
+        groupSlug={groupSlug}
       />
     </div>
   )

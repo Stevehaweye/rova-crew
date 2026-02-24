@@ -3,6 +3,7 @@ import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import { JoinCard } from './join-button'
 import ContactOrganiserButton from '@/components/ContactOrganiserButton'
+import MessageMemberButton from '@/components/MessageMemberButton'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -389,11 +390,13 @@ function MemberWall({
   groupSlug,
   totalCount,
   colour,
+  currentUserId,
 }: {
   members: Member[]
   groupSlug: string
   totalCount: number
   colour: string
+  currentUserId: string | null
 }) {
   if (members.length === 0) {
     return (
@@ -456,6 +459,11 @@ function MemberWall({
               >
                 {tier.emoji} {tier.label}
               </span>
+
+              {/* Message button (not on own card) */}
+              {currentUserId && currentUserId !== m.userId && (
+                <MessageMemberButton otherUserId={m.userId} colour={colour} />
+              )}
             </div>
           )
         })}
@@ -680,6 +688,7 @@ export default async function GroupPage({
               groupSlug={group.slug}
               totalCount={memberCount}
               colour={colour}
+              currentUserId={user?.id ?? null}
             />
           </div>
 
