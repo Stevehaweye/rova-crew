@@ -321,24 +321,25 @@ export default function GroupChat({
       .subscribe()
 
     // Polling fallback: fetch new messages every 4 seconds
-    // This covers cases where Realtime doesn't deliver (RLS, network, etc.)
+    // Uses simple query without profile join to avoid RLS issues
     const pollInterval = setInterval(async () => {
       if (cancelled) return
-      const { data: latest } = await supabase
+      const { data: latest, error: pollErr } = await supabase
         .from('messages')
-        .select('id, sender_id, content, content_type, image_url, is_pinned, edited_at, deleted_at, deleted_by, reply_to_id, created_at, profiles:sender_id ( full_name, avatar_url )')
+        .select('id, sender_id, content, content_type, image_url, is_pinned, edited_at, deleted_at, deleted_by, reply_to_id, created_at')
         .eq('channel_id', channelId)
         .order('created_at', { ascending: false })
         .limit(10)
 
-      if (!latest || latest.length === 0) return
+      if (pollErr || !latest || latest.length === 0) return
 
       setMessages((prev) => {
         const existingIds = new Set(prev.map((m) => m.id))
         const newMsgs = latest
           .filter((m) => !existingIds.has(m.id) && !m.deleted_at)
           .map((m) => {
-            const profile = m.profiles as unknown as { full_name: string; avatar_url: string | null } | null
+            // Look up sender from known members list
+            const member = members.find((mem) => mem.id === m.sender_id)
             return {
               id: m.id,
               content: m.content,
@@ -353,15 +354,15 @@ export default function GroupChat({
               replyTo: null,
               sender: {
                 id: m.sender_id,
-                fullName: profile?.full_name ?? 'Member',
-                avatarUrl: profile?.avatar_url ?? null,
+                fullName: member?.fullName ?? 'Member',
+                avatarUrl: member?.avatarUrl ?? null,
               },
               reactions: [],
             } as ChatMessage
           })
 
         if (newMsgs.length === 0) {
-          // Also check for updates (edits/deletes) on existing messages
+          // Check for updates (edits/deletes) on existing messages
           let updated = false
           const updatedPrev = prev.map((existing) => {
             const fresh = latest.find((l) => l.id === existing.id)
