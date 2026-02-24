@@ -339,7 +339,7 @@ const NAV_ITEMS = [
   { icon: '📊', label: 'Dashboard',      key: 'dashboard',     available: true  },
   { icon: '📅', label: 'Events',         key: 'events',        available: true  },
   { icon: '👥', label: 'Members',        key: 'members',       available: false },
-  { icon: '📣', label: 'Announcements',  key: 'announcements', available: false },
+  { icon: '📣', label: 'Announcements',  key: 'announcements', available: true  },
   { icon: '🏆', label: 'Hall of Fame',   key: 'hof',           available: false },
   { icon: '⚙️', label: 'Settings',       key: 'settings',      available: true  },
 ]
@@ -347,6 +347,7 @@ const NAV_ITEMS = [
 const NAV_ROUTES: Record<string, (slug: string) => string> = {
   dashboard: (slug) => `/g/${slug}/admin`,
   events: (slug) => `/g/${slug}/admin/events`,
+  announcements: (slug) => `/g/${slug}/admin/announcements`,
   settings: (slug) => `/g/${slug}/admin/settings`,
 }
 
@@ -874,9 +875,7 @@ export default function AdminShell({
                   emoji="📣"
                   label="Send Announcement"
                   description="Broadcast a message to all members"
-                  href={`/g/${group.slug}/admin/announce`}
-                  disabled
-                  comingSoon="Week 3"
+                  href={`/g/${group.slug}/admin/announcements`}
                 />
                 <QuickActionCard
                   emoji="👋"
