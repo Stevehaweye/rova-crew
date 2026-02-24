@@ -48,7 +48,24 @@ export async function GET(request: NextRequest) {
 
     const { data: messages } = await query
 
-    return NextResponse.json({ messages: messages ?? [] })
+    // Fetch reactions for these messages
+    const messageIds = (messages ?? []).map((m) => m.id)
+    let reactions: { message_id: string; emoji: string; user_id: string }[] = []
+
+    if (messageIds.length > 0) {
+      const { data: reactionRows } = await svc
+        .from('message_reactions')
+        .select('message_id, emoji, user_id')
+        .in('message_id', messageIds)
+
+      reactions = reactionRows ?? []
+    }
+
+    return NextResponse.json({
+      messages: messages ?? [],
+      reactions,
+      currentUserId: user.id,
+    })
   } catch (err) {
     console.error('[chat/poll] error:', err)
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })

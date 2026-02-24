@@ -320,15 +320,30 @@ export default function GroupChat({
       })
       .subscribe()
 
-    // Polling fallback: fetch new messages every 3 seconds via API
+    // Polling fallback: fetch new messages + reactions every 3 seconds via API
     // This bypasses RLS issues by using the service client server-side
     const pollInterval = setInterval(async () => {
       if (cancelled) return
       try {
         const res = await fetch(`/api/chat/poll?channelId=${channelId}`)
         if (!res.ok) return
-        const { messages: latest } = await res.json()
+        const { messages: latest, reactions: pollReactions, currentUserId: uid } = await res.json()
         if (!latest || latest.length === 0) return
+
+        // Build reactions map from poll data
+        const reactionsByMsg: Record<string, ReactionGroup[]> = {}
+        if (pollReactions) {
+          for (const r of pollReactions as { message_id: string; emoji: string; user_id: string }[]) {
+            if (!reactionsByMsg[r.message_id]) reactionsByMsg[r.message_id] = []
+            const grp = reactionsByMsg[r.message_id].find((g) => g.emoji === r.emoji)
+            if (grp) {
+              grp.count++
+              if (r.user_id === uid) grp.reacted = true
+            } else {
+              reactionsByMsg[r.message_id].push({ emoji: r.emoji, count: 1, reacted: r.user_id === uid })
+            }
+          }
+        }
 
         setMessages((prev) => {
           const existingIds = new Set(prev.map((m) => m.id))
@@ -352,26 +367,43 @@ export default function GroupChat({
                   fullName: m.profiles?.full_name ?? 'Member',
                   avatarUrl: m.profiles?.avatar_url ?? null,
                 },
-                reactions: [],
+                reactions: reactionsByMsg[m.id] ?? [],
               } as ChatMessage
             })
 
-          if (newMsgs.length === 0) {
-            // Check for updates (edits/deletes) on existing messages
-            let updated = false
-            const updatedPrev = prev.map((existing) => {
-              const fresh = latest.find((l: { id: string }) => l.id === existing.id)
-              if (fresh && (fresh.deleted_at !== existing.deletedAt || fresh.edited_at !== existing.editedAt || fresh.content !== existing.content || fresh.is_pinned !== existing.isPinned)) {
-                updated = true
-                return { ...existing, content: fresh.content, deletedAt: fresh.deleted_at, deletedBy: fresh.deleted_by, editedAt: fresh.edited_at, isPinned: fresh.is_pinned }
+          // Always update reactions on existing messages
+          let updated = false
+          const updatedPrev = prev.map((existing) => {
+            const fresh = latest.find((l: { id: string }) => l.id === existing.id)
+            const freshReactions = reactionsByMsg[existing.id] ?? []
+            const reactionsChanged = JSON.stringify(existing.reactions) !== JSON.stringify(freshReactions)
+
+            if (fresh && (fresh.deleted_at !== existing.deletedAt || fresh.edited_at !== existing.editedAt || fresh.content !== existing.content || fresh.is_pinned !== existing.isPinned || reactionsChanged)) {
+              updated = true
+              return {
+                ...existing,
+                content: fresh.content,
+                deletedAt: fresh.deleted_at,
+                deletedBy: fresh.deleted_by,
+                editedAt: fresh.edited_at,
+                isPinned: fresh.is_pinned,
+                reactions: freshReactions,
               }
-              return existing
-            })
+            }
+            if (!fresh && reactionsChanged) {
+              updated = true
+              return { ...existing, reactions: freshReactions }
+            }
+            return existing
+          })
+
+          if (newMsgs.length === 0) {
             return updated ? updatedPrev : prev
           }
 
           // Remove any optimistic messages that now have real versions
-          const cleaned = prev.filter((m) => !m.id.startsWith('optimistic-') || !newMsgs.some((n: ChatMessage) => n.sender.id === m.sender.id))
+          const base = updated ? updatedPrev : prev
+          const cleaned = base.filter((m) => !m.id.startsWith('optimistic-') || !newMsgs.some((n: ChatMessage) => n.sender.id === m.sender.id))
           return [...cleaned, ...newMsgs].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
         })
       } catch {
