@@ -42,6 +42,28 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to save RSVP' }, { status: 500 })
     }
 
+    // Auto-add to channel_members when RSVPing going/maybe
+    if (status === 'going' || status === 'maybe') {
+      const svcClient = createServiceClient()
+      const { data: eventChannel } = await svcClient
+        .from('channels')
+        .select('id')
+        .eq('event_id', eventId)
+        .eq('type', 'event_chat')
+        .maybeSingle()
+
+      if (eventChannel) {
+        await svcClient.from('channel_members').upsert(
+          {
+            channel_id: eventChannel.id,
+            user_id: user.id,
+            last_read_at: new Date().toISOString(),
+          },
+          { onConflict: 'channel_id,user_id' }
+        )
+      }
+    }
+
     // Send confirmation email for free events when status is 'going'
     if (status === 'going') {
       const serviceClient = createServiceClient()

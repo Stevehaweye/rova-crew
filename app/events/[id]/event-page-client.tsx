@@ -7,16 +7,17 @@ import dynamic from 'next/dynamic'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import ContactOrganiserModal from '@/components/ContactOrganiserModal'
+import type { ChatMessage, ChatMember } from '@/components/GroupChat'
 
 const SharedCostTicker = dynamic(() => import('@/components/events/SharedCostTicker'), { ssr: false })
 
-const EventChat = dynamic(() => import('@/components/EventChat'), {
+const EventChatNew = dynamic(() => import('@/components/EventChatNew'), {
   loading: () => (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       <div className="px-5 py-4 border-b border-gray-100">
         <div className="h-4 w-28 bg-gray-100 rounded animate-pulse" />
       </div>
-      <div className="flex items-center justify-center h-[300px] sm:h-[400px]">
+      <div className="flex items-center justify-center h-[320px] sm:h-[420px]">
         <svg className="w-5 h-5 animate-spin text-gray-300" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -100,6 +101,11 @@ interface Props {
   currentUser: CurrentUserProfile | null
   currentUserRsvp: { id: string; status: 'going' | 'maybe' | 'not_going' } | null
   organiser: OrganiserData | null
+  chatChannelId: string | null
+  chatInitialMessages: ChatMessage[]
+  chatMembers: ChatMember[]
+  chatIsArchived: boolean
+  chatIsAdmin: boolean
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -859,6 +865,11 @@ export default function EventPageClient({
   currentUser,
   currentUserRsvp,
   organiser,
+  chatChannelId,
+  chatInitialMessages,
+  chatMembers,
+  chatIsArchived,
+  chatIsAdmin,
 }: Props) {
   const router = useRouter()
   const colour = hex(group.primaryColour)
@@ -1229,11 +1240,36 @@ export default function EventPageClient({
             </div>
 
             {/* Event Chat */}
-            <EventChat
-              eventId={event.id}
-              currentUser={currentUser ? { id: currentUser.id, full_name: currentUser.fullName, avatar_url: currentUser.avatarUrl } : null}
-              isRsvped={rsvpStatus === 'going' || rsvpStatus === 'maybe'}
-            />
+            {currentUser && (rsvpStatus === 'going' || rsvpStatus === 'maybe') && chatChannelId ? (
+              <EventChatNew
+                channelId={chatChannelId}
+                eventId={event.id}
+                eventTitle={event.title}
+                eventStartsAt={event.startsAt}
+                eventEndsAt={event.endsAt}
+                groupColour={colour}
+                currentUserId={currentUser.id}
+                isAdmin={chatIsAdmin}
+                initialMessages={chatInitialMessages}
+                members={chatMembers}
+                isArchived={chatIsArchived}
+              />
+            ) : (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="px-5 py-4 border-b border-gray-100">
+                  <h3 className="text-sm font-bold text-gray-900">Event Chat</h3>
+                </div>
+                <div className="flex flex-col items-center justify-center h-[200px] text-center px-6">
+                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-semibold text-gray-700 mb-1">RSVP to join the event chat</p>
+                  <p className="text-xs text-gray-400">Chat with other attendees before, during, and after the event.</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ── Right column (sticky sidebar) ────────────────────── */}
