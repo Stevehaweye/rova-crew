@@ -18,51 +18,72 @@ function Spinner() {
 function CallbackHandler() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const exchanged = useRef(false)
+  const handled = useRef(false)
 
   useEffect(() => {
-    // Prevent double-exchange in React strict mode
-    if (exchanged.current) return
-    exchanged.current = true
-
-    const code = searchParams.get('code')
-
-    if (!code) {
-      router.replace('/auth?error=missing_code')
-      return
-    }
+    if (handled.current) return
+    handled.current = true
 
     const supabase = createClient()
 
-    supabase.auth.exchangeCodeForSession(code).then(async ({ error }) => {
-      if (error) {
-        console.error('[auth/callback] exchange error:', error.message)
-        router.replace(
-          `/auth?error=exchange_failed&detail=${encodeURIComponent(error.message)}`
-        )
-        return
+    async function handleRedirect(userId: string) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('onboarding_complete')
+        .eq('id', userId)
+        .single()
+
+      if (!profile?.onboarding_complete) {
+        router.replace('/onboarding')
+      } else {
+        router.replace('/home')
       }
+    }
 
-      // Check if the user needs onboarding
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('onboarding_complete')
-          .eq('id', user.id)
-          .single()
-
-        if (!profile?.onboarding_complete) {
-          router.replace('/onboarding')
+    // Handle PKCE flow (code in query params)
+    const code = searchParams.get('code')
+    if (code) {
+      supabase.auth.exchangeCodeForSession(code).then(async ({ data, error }) => {
+        if (error || !data.session?.user) {
+          router.replace(
+            `/auth?error=exchange_failed&detail=${encodeURIComponent(error?.message ?? 'No session')}`
+          )
           return
         }
-      }
+        handleRedirect(data.session.user.id)
+      })
+      return
+    }
 
-      router.replace('/home')
+    // Handle implicit flow (tokens in URL hash — auto-detected by supabase client)
+    // Listen for the auth state change when tokens are processed from the hash
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        subscription.unsubscribe()
+        handleRedirect(session.user.id)
+      }
     })
+
+    // Fallback: check if already signed in (tokens may have been processed before listener attached)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        subscription.unsubscribe()
+        handleRedirect(session.user.id)
+      }
+    })
+
+    // Safety timeout — if nothing happens after 5 seconds, redirect to auth
+    const timeout = setTimeout(() => {
+      subscription.unsubscribe()
+      router.replace('/auth?error=timeout')
+    }, 5000)
+
+    return () => {
+      clearTimeout(timeout)
+      subscription.unsubscribe()
+    }
   }, [searchParams, router])
 
   return <Spinner />
