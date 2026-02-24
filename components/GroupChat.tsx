@@ -253,7 +253,15 @@ export default function GroupChat({
           }
 
           setMessages((prev) => {
+            // Skip if already present (dedup)
             if (prev.some((m) => m.id === newMsg.id)) return prev
+            // If this is our own message, replace optimistic version
+            if (newMsg.sender.id === currentUserId) {
+              const hasOptimistic = prev.some((m) => m.id.startsWith('optimistic-'))
+              if (hasOptimistic) {
+                return prev.map((m) => (m.id.startsWith('optimistic-') && m.sender.id === currentUserId ? newMsg : m))
+              }
+            }
             return [...prev, newMsg]
           })
         }
@@ -440,12 +448,41 @@ export default function GroupChat({
   async function handleSend() {
     if ((!body.trim() && !imageUrl) || sending) return
     const text = body.trim()
+    const currentReplyTo = replyTo
+    const currentImageUrl = imageUrl
     setBody('')
     setImageUrl(null)
     setReplyTo(null)
     setMentionQuery(null)
     setTyping(false)
     setSending(true)
+
+    // Optimistic message so it appears immediately
+    const optimisticId = `optimistic-${Date.now()}`
+    const me = members.find((m) => m.id === currentUserId)
+    const optimisticMsg: ChatMessage = {
+      id: optimisticId,
+      content: text || '📷',
+      contentType: currentImageUrl ? 'image' : 'text',
+      imageUrl: currentImageUrl,
+      isPinned: false,
+      editedAt: null,
+      deletedAt: null,
+      deletedBy: null,
+      createdAt: new Date().toISOString(),
+      replyToId: currentReplyTo?.id ?? null,
+      replyTo: currentReplyTo
+        ? { content: currentReplyTo.content, senderName: currentReplyTo.sender.fullName }
+        : null,
+      sender: {
+        id: currentUserId,
+        fullName: me?.fullName ?? 'You',
+        avatarUrl: me?.avatarUrl ?? null,
+      },
+      reactions: [],
+    }
+
+    setMessages((prev) => [...prev, optimisticMsg])
 
     const res = await fetch('/api/chat', {
       method: 'POST',
@@ -454,12 +491,22 @@ export default function GroupChat({
         channelId,
         groupId,
         content: text || '📷',
-        imageUrl: imageUrl || undefined,
-        replyToId: replyTo?.id || undefined,
+        imageUrl: currentImageUrl || undefined,
+        replyToId: currentReplyTo?.id || undefined,
       }),
     })
 
-    if (!res.ok) {
+    if (res.ok) {
+      const data = await res.json()
+      // Replace optimistic message with real ID
+      if (data.messageId) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === optimisticId ? { ...m, id: data.messageId } : m))
+        )
+      }
+    } else {
+      // Remove optimistic message and restore input on failure
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticId))
       setBody(text)
       console.error('[GroupChat] send failed')
     }
