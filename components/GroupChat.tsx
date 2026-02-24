@@ -187,6 +187,7 @@ export default function GroupChat({
 
   useEffect(() => {
     const supabase = createClient()
+    let cancelled = false
 
     const messagesChannel = supabase
       .channel(`group-chat-${channelId}`)
@@ -199,6 +200,7 @@ export default function GroupChat({
           filter: `channel_id=eq.${channelId}`,
         },
         async (payload) => {
+          if (cancelled) return
           const row = payload.new as {
             id: string
             sender_id: string
@@ -300,7 +302,15 @@ export default function GroupChat({
           )
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[GroupChat] realtime connected')
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('[GroupChat] realtime channel error — falling back to polling')
+        } else {
+          console.log('[GroupChat] realtime status:', status)
+        }
+      })
 
     // Reactions channel
     const reactionsChannel = supabase
@@ -310,11 +320,73 @@ export default function GroupChat({
       })
       .subscribe()
 
+    // Polling fallback: fetch new messages every 4 seconds
+    // This covers cases where Realtime doesn't deliver (RLS, network, etc.)
+    const pollInterval = setInterval(async () => {
+      if (cancelled) return
+      const { data: latest } = await supabase
+        .from('messages')
+        .select('id, sender_id, content, content_type, image_url, is_pinned, edited_at, deleted_at, deleted_by, reply_to_id, created_at, profiles:sender_id ( full_name, avatar_url )')
+        .eq('channel_id', channelId)
+        .order('created_at', { ascending: false })
+        .limit(10)
+
+      if (!latest || latest.length === 0) return
+
+      setMessages((prev) => {
+        const existingIds = new Set(prev.map((m) => m.id))
+        const newMsgs = latest
+          .filter((m) => !existingIds.has(m.id) && !m.deleted_at)
+          .map((m) => {
+            const profile = m.profiles as unknown as { full_name: string; avatar_url: string | null } | null
+            return {
+              id: m.id,
+              content: m.content,
+              contentType: m.content_type,
+              imageUrl: m.image_url,
+              isPinned: m.is_pinned,
+              editedAt: m.edited_at,
+              deletedAt: m.deleted_at,
+              deletedBy: m.deleted_by,
+              createdAt: m.created_at,
+              replyToId: m.reply_to_id,
+              replyTo: null,
+              sender: {
+                id: m.sender_id,
+                fullName: profile?.full_name ?? 'Member',
+                avatarUrl: profile?.avatar_url ?? null,
+              },
+              reactions: [],
+            } as ChatMessage
+          })
+
+        if (newMsgs.length === 0) {
+          // Also check for updates (edits/deletes) on existing messages
+          let updated = false
+          const updatedPrev = prev.map((existing) => {
+            const fresh = latest.find((l) => l.id === existing.id)
+            if (fresh && (fresh.deleted_at !== existing.deletedAt || fresh.edited_at !== existing.editedAt || fresh.content !== existing.content || fresh.is_pinned !== existing.isPinned)) {
+              updated = true
+              return { ...existing, content: fresh.content, deletedAt: fresh.deleted_at, deletedBy: fresh.deleted_by, editedAt: fresh.edited_at, isPinned: fresh.is_pinned }
+            }
+            return existing
+          })
+          return updated ? updatedPrev : prev
+        }
+
+        // Remove any optimistic messages that now have real versions
+        const cleaned = prev.filter((m) => !m.id.startsWith('optimistic-') || !newMsgs.some((n) => n.sender.id === m.sender.id))
+        return [...cleaned, ...newMsgs].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      })
+    }, 4000)
+
     return () => {
+      cancelled = true
+      clearInterval(pollInterval)
       supabase.removeChannel(messagesChannel)
       supabase.removeChannel(reactionsChannel)
     }
-  }, [channelId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [channelId, currentUserId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Presence (typing) ───────────────────────────────────────────────────
 
