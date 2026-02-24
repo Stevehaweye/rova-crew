@@ -1,4 +1,4 @@
-# ROVA Crew — Week 3 & 4 Handover Summary
+# ROVA Crew — Week 3 Handover Summary
 
 **Date**: 24 February 2026
 **Live URL**: https://rova-crew.netlify.app
@@ -8,7 +8,7 @@
 
 ## 1. Files Created or Modified
 
-### Week 3 — New Files (25)
+### New Files (25)
 
 | File | Purpose |
 |---|---|
@@ -36,7 +36,7 @@
 | `lib/stripe-client.ts` | Stripe browser loader (`loadStripe`) |
 | `lib/email.ts` | `sendRsvpConfirmationEmail` helper wrapping React Email + Resend |
 
-### Week 3 — Modified Files (19)
+### Modified Files (19)
 
 | File | Change |
 |---|---|
@@ -59,7 +59,7 @@
 | `tsconfig.json` | Adjusted compiler options |
 | `package.json` | Added stripe, jsqr, qrcode, react-email, date-fns dependencies |
 
-### Week 4 — New Files (7)
+### Additional Files — Post-Testing Refinements (7)
 
 | File | Purpose |
 |---|---|
@@ -71,7 +71,7 @@
 | `app/api/groups/[slug]/membership-fee/route.ts` | Admin API to enable/disable membership fee; creates Stripe Product + recurring Price on connected account |
 | `app/api/stripe/subscription-checkout/route.ts` | Creates Stripe Checkout session in `subscription` mode for group membership; 5% application fee |
 
-### Week 4 — Modified Files (12)
+### Additional Modifications — Post-Testing Refinements (12)
 
 | File | Change |
 |---|---|
@@ -136,7 +136,7 @@ RLS enabled (policies TBD based on usage)
 | `events` | `stripe_price_id` | text | Stripe price reference |
 | `rsvps` | `payment_status` | text | paid/pending/null |
 
-### Week 4 — New Tables
+### Additional Tables — Post-Testing Refinements
 
 **`group_subscriptions`** (requires SQL migration — see section 9)
 ```sql
@@ -154,7 +154,7 @@ UNIQUE (group_id, user_id)
 ```
 RLS: SELECT for own subscriptions + group admins
 
-### Week 4 — Columns Added to Existing Tables
+### Additional Columns — Post-Testing Refinements
 
 | Table | Column | Type | Notes |
 |---|---|---|---|
@@ -199,19 +199,19 @@ RLS: SELECT for own subscriptions + group admins
 ### WOW 6: Global Navigation
 **Demo**: Sign in → bottom nav bar with Home, Discover, Card, Profile tabs → works on all app pages → hides on admin pages and event detail pages → Profile page shows stats + sign out.
 
-### WOW 7: Free Event RSVP Emails (Week 4)
+### WOW 7: Free Event RSVP Emails
 **Demo**: Sign in → open a free event → RSVP "Going" → receive branded confirmation email with QR code, event details, and Google Maps link. Previously only guests and paid RSVPs got emails.
 
-### WOW 8: Event Editing (Week 4)
+### WOW 8: Event Editing
 **Demo**: Go to admin dashboard → see "Edit" next to any upcoming event → click → pre-filled event form → change title/time/location → save → changes reflected immediately. Existing cover images are preserved.
 
-### WOW 9: Contact Organiser (Week 4)
+### WOW 9: Contact Organiser
 **Demo**: Open any group page → see "Organised by" card with admin name + avatar → click "Contact organiser" → fill in message → admin receives email with sender's reply-to address. Admin email is never exposed to the client.
 
-### WOW 10: Enhanced Payment Receipts (Week 4)
+### WOW 10: Enhanced Payment Receipts
 **Demo**: Pay for an event → confirmation email now includes payment reference (last 8 chars of payment intent) + green "Payment Receipt" box with "View full receipt" link to Stripe's hosted receipt page.
 
-### WOW 11: Group Monthly Subscription (Week 4)
+### WOW 11: Group Monthly Subscription
 **Demo**: Admin: Settings → enable membership fee → set £5.00/month → save. Public group page: "Join — £5.00/month →" button → Stripe subscription checkout → complete payment → member added to group with recurring billing.
 
 ---
@@ -234,12 +234,12 @@ RLS: SELECT for own subscriptions + group admins
 - Bottom navigation bar
 - Discovery/search page
 - Invite modal with QR code + WhatsApp share link
-- Free member RSVP confirmation emails with QR codes (Week 4)
-- Event editing for admins (Week 4)
-- Organiser display on group + event pages (Week 4)
-- Contact organiser email relay (Week 4)
-- Enhanced payment receipts with Stripe receipt links (Week 4)
-- Group monthly membership subscription via Stripe (Week 4)
+- Free member RSVP confirmation emails with QR codes
+- Event editing for admins
+- Organiser display on group + event pages
+- Contact organiser email relay
+- Enhanced payment receipts with Stripe receipt links
+- Group monthly membership subscription via Stripe
 
 ---
 
@@ -253,7 +253,7 @@ RLS: SELECT for own subscriptions + group admins
 | Announcements | Nav item disabled | — |
 | Members list (admin) | Nav item disabled | — |
 | Hall of Fame | Nav item disabled | — |
-| Monthly revenue analytics | Stat card shows £0.00 | "Unlocks Week 5" |
+| Monthly revenue analytics | Stat card shows £0.00 | "Unlocks Week 4" |
 | WhatsApp migration tool | Button disabled | "Week 6" |
 | Get Your Flyer | Quick action disabled | "Week 6" |
 | Profile editing | Read-only | — |
@@ -261,8 +261,8 @@ RLS: SELECT for own subscriptions + group admins
 | Crew scoring engine | Tier is event-count only | — |
 | Member streaks | Shows on home, no tracking | — |
 | Onboarding step 3 groups | Hardcoded `PLACEHOLDER_GROUPS` | — |
-| Subscription webhook lifecycle | Phase C: handle `invoice.paid`, `customer.subscription.updated/deleted` | Week 5 |
-| Member subscription management | Phase D: view/cancel subscription from profile or group page | Week 5 |
+| Subscription webhook lifecycle | Phase C: handle `invoice.paid`, `customer.subscription.updated/deleted` | Week 4 |
+| Member subscription management | Phase D: view/cancel subscription from profile or group page | Week 4 |
 
 ---
 
@@ -300,22 +300,23 @@ stripe listen --forward-to localhost:3000/api/stripe/webhook
 - Bottom nav shows on: `/home`, `/discover`, `/wallet`, `/profile`, `/g/*` (except `/g/*/admin/*`).
 - Event detail pages and admin pages intentionally hide the bottom nav.
 
-### Subscriptions (Week 4)
+### Subscriptions
 - Subscription checkout creates a Stripe Customer on the **connected account** (not the platform). Customer lookup is by email.
 - Subscription webhook lifecycle (Phase C) is **not yet built** — `invoice.paid`, `customer.subscription.updated`, `customer.subscription.deleted` events are not handled. After the initial checkout, the member is added to the group but subscription status changes (cancellation, failed renewal) won't auto-update membership.
 - The `group_subscriptions` table and group columns require a **manual SQL migration** — see section 9 below.
 - `application_fee_percent: 5` is set on subscription creation, matching event payments.
 
-### Contact Organiser (Week 4)
+### Contact Organiser
 - Admin email is fetched server-side and never exposed to the client.
 - Emails are sent via Resend with `replyTo` set to the sender's email so the admin can reply directly.
 
-### Event Editing (Week 4)
+### Event Editing
 - Cover image: if admin doesn't select a new image, the existing `cover_url` is preserved. Only uploads on new file selection.
-- Payment type is not locked in edit mode yet — changing payment type on an event with existing paid RSVPs could cause issues. Consider locking this in Week 5.
+- Payment type is not locked in edit mode yet — changing payment type on an event with existing paid RSVPs could cause issues. Consider locking this in Week 4.
 
-### Week 3 Commits (11)
+### Commits This Week (12)
 ```
+2d7cf50 feat: Week 4 — admin UX, emails, contact & group subscriptions
 9237a8f fix: check for existing session after PKCE exchange failure
 b9562d9 fix: switch auth to implicit flow to avoid PKCE cookie issues
 6248b07 fix: move auth callback to client-side for reliable PKCE exchange
@@ -327,11 +328,6 @@ d97ba4e feat: Stripe Connect onboarding flow for group admins
 ee35310 feat: add global bottom navigation bar and profile page
 e0f5ef4 fix: use request/response cookie pattern in auth callback for Netlify
 3a5f92f feat: Week 3 — Stripe payments, guest RSVP rebuild, wallet, check-in scanner, email templates
-```
-
-### Week 4 Commits (1)
-```
-2d7cf50 feat: Week 4 — admin UX, emails, contact & group subscriptions
 ```
 
 ---
@@ -348,7 +344,7 @@ e0f5ef4 fix: use request/response cookie pattern in auth callback for Netlify
 
 ---
 
-## 9. Week 4 SQL Migration
+## 9. SQL Migration — Group Subscriptions
 
 Run this in the Supabase SQL Editor before testing membership subscriptions:
 
