@@ -320,66 +320,64 @@ export default function GroupChat({
       })
       .subscribe()
 
-    // Polling fallback: fetch new messages every 4 seconds
-    // Uses simple query without profile join to avoid RLS issues
+    // Polling fallback: fetch new messages every 3 seconds via API
+    // This bypasses RLS issues by using the service client server-side
     const pollInterval = setInterval(async () => {
       if (cancelled) return
-      const { data: latest, error: pollErr } = await supabase
-        .from('messages')
-        .select('id, sender_id, content, content_type, image_url, is_pinned, edited_at, deleted_at, deleted_by, reply_to_id, created_at')
-        .eq('channel_id', channelId)
-        .order('created_at', { ascending: false })
-        .limit(10)
+      try {
+        const res = await fetch(`/api/chat/poll?channelId=${channelId}`)
+        if (!res.ok) return
+        const { messages: latest } = await res.json()
+        if (!latest || latest.length === 0) return
 
-      if (pollErr || !latest || latest.length === 0) return
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id))
+          const newMsgs = latest
+            .filter((m: { id: string; deleted_at: string | null }) => !existingIds.has(m.id) && !m.deleted_at)
+            .map((m: { id: string; sender_id: string; content: string; content_type: string; image_url: string | null; is_pinned: boolean; edited_at: string | null; deleted_at: string | null; deleted_by: string | null; reply_to_id: string | null; created_at: string; profiles: { full_name: string; avatar_url: string | null } | null }) => {
+              return {
+                id: m.id,
+                content: m.content,
+                contentType: m.content_type,
+                imageUrl: m.image_url,
+                isPinned: m.is_pinned,
+                editedAt: m.edited_at,
+                deletedAt: m.deleted_at,
+                deletedBy: m.deleted_by,
+                createdAt: m.created_at,
+                replyToId: m.reply_to_id,
+                replyTo: null,
+                sender: {
+                  id: m.sender_id,
+                  fullName: m.profiles?.full_name ?? 'Member',
+                  avatarUrl: m.profiles?.avatar_url ?? null,
+                },
+                reactions: [],
+              } as ChatMessage
+            })
 
-      setMessages((prev) => {
-        const existingIds = new Set(prev.map((m) => m.id))
-        const newMsgs = latest
-          .filter((m) => !existingIds.has(m.id) && !m.deleted_at)
-          .map((m) => {
-            // Look up sender from known members list
-            const member = members.find((mem) => mem.id === m.sender_id)
-            return {
-              id: m.id,
-              content: m.content,
-              contentType: m.content_type,
-              imageUrl: m.image_url,
-              isPinned: m.is_pinned,
-              editedAt: m.edited_at,
-              deletedAt: m.deleted_at,
-              deletedBy: m.deleted_by,
-              createdAt: m.created_at,
-              replyToId: m.reply_to_id,
-              replyTo: null,
-              sender: {
-                id: m.sender_id,
-                fullName: member?.fullName ?? 'Member',
-                avatarUrl: member?.avatarUrl ?? null,
-              },
-              reactions: [],
-            } as ChatMessage
-          })
+          if (newMsgs.length === 0) {
+            // Check for updates (edits/deletes) on existing messages
+            let updated = false
+            const updatedPrev = prev.map((existing) => {
+              const fresh = latest.find((l: { id: string }) => l.id === existing.id)
+              if (fresh && (fresh.deleted_at !== existing.deletedAt || fresh.edited_at !== existing.editedAt || fresh.content !== existing.content || fresh.is_pinned !== existing.isPinned)) {
+                updated = true
+                return { ...existing, content: fresh.content, deletedAt: fresh.deleted_at, deletedBy: fresh.deleted_by, editedAt: fresh.edited_at, isPinned: fresh.is_pinned }
+              }
+              return existing
+            })
+            return updated ? updatedPrev : prev
+          }
 
-        if (newMsgs.length === 0) {
-          // Check for updates (edits/deletes) on existing messages
-          let updated = false
-          const updatedPrev = prev.map((existing) => {
-            const fresh = latest.find((l) => l.id === existing.id)
-            if (fresh && (fresh.deleted_at !== existing.deletedAt || fresh.edited_at !== existing.editedAt || fresh.content !== existing.content || fresh.is_pinned !== existing.isPinned)) {
-              updated = true
-              return { ...existing, content: fresh.content, deletedAt: fresh.deleted_at, deletedBy: fresh.deleted_by, editedAt: fresh.edited_at, isPinned: fresh.is_pinned }
-            }
-            return existing
-          })
-          return updated ? updatedPrev : prev
-        }
-
-        // Remove any optimistic messages that now have real versions
-        const cleaned = prev.filter((m) => !m.id.startsWith('optimistic-') || !newMsgs.some((n) => n.sender.id === m.sender.id))
-        return [...cleaned, ...newMsgs].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
-      })
-    }, 4000)
+          // Remove any optimistic messages that now have real versions
+          const cleaned = prev.filter((m) => !m.id.startsWith('optimistic-') || !newMsgs.some((n: ChatMessage) => n.sender.id === m.sender.id))
+          return [...cleaned, ...newMsgs].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        })
+      } catch {
+        // Silently ignore poll errors
+      }
+    }, 3000)
 
     return () => {
       cancelled = true
