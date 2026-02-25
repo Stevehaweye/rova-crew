@@ -395,12 +395,56 @@ export default function DMChat({
   async function handleReaction(messageId: string, emoji: string, alreadyReacted: boolean) {
     setEmojiPickerId(null)
     setActiveMenuId(null)
+
+    // Optimistic update
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== messageId) return m
+        const reactions = [...m.reactions]
+        if (alreadyReacted) {
+          const idx = reactions.findIndex((r) => r.emoji === emoji)
+          if (idx !== -1) {
+            if (reactions[idx].count <= 1) reactions.splice(idx, 1)
+            else reactions[idx] = { ...reactions[idx], count: reactions[idx].count - 1, reacted: false }
+          }
+        } else {
+          const idx = reactions.findIndex((r) => r.emoji === emoji)
+          if (idx !== -1) reactions[idx] = { ...reactions[idx], count: reactions[idx].count + 1, reacted: true }
+          else reactions.push({ emoji, count: 1, reacted: true })
+        }
+        return { ...m, reactions }
+      })
+    )
+
     const method = alreadyReacted ? 'DELETE' : 'POST'
-    await fetch(`/api/chat/${messageId}/reactions`, {
+    const res = await fetch(`/api/chat/${messageId}/reactions`, {
       method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ emoji }),
     })
+
+    if (!res.ok) {
+      console.error('[DMChat] reaction failed:', await res.text())
+      // Revert optimistic update on failure
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== messageId) return m
+          const reactions = [...m.reactions]
+          if (alreadyReacted) {
+            const idx = reactions.findIndex((r) => r.emoji === emoji)
+            if (idx !== -1) reactions[idx] = { ...reactions[idx], count: reactions[idx].count + 1, reacted: true }
+            else reactions.push({ emoji, count: 1, reacted: true })
+          } else {
+            const idx = reactions.findIndex((r) => r.emoji === emoji)
+            if (idx !== -1) {
+              if (reactions[idx].count <= 1) reactions.splice(idx, 1)
+              else reactions[idx] = { ...reactions[idx], count: reactions[idx].count - 1, reacted: false }
+            }
+          }
+          return { ...m, reactions }
+        })
+      )
+    }
   }
 
   function handleReply(msg: ChatMessage) {
