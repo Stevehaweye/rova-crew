@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
+import { getHallOfFameRecords, type HallOfFameRecord } from '@/lib/hall-of-fame'
 import { JoinCard } from './join-button'
 import ContactOrganiserButton from '@/components/ContactOrganiserButton'
 import MessageMemberButton from '@/components/MessageMemberButton'
@@ -472,43 +473,50 @@ function MemberWall({
   )
 }
 
-// ─── Hall of Fame (placeholder) ───────────────────────────────────────────────
+// ─── Hall of Fame ────────────────────────────────────────────────────────────
 
-function HallOfFame({ colour }: { colour: string }) {
-  const records = [
-    { label: 'Most Events Attended', icon: '🎯', holder: '—', value: '—' },
-    { label: 'Longest Streak',       icon: '🔥', holder: '—', value: '—' },
-  ]
+function HallOfFame({ records, colour, slug }: { records: HallOfFameRecord[]; colour: string; slug: string }) {
+  const populated = records.filter((r) => r.holderId !== null)
+  const preview = populated.slice(0, 3)
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
       <div className="flex items-center gap-2 mb-4">
         <TrophyIcon />
         <h3 className="text-sm font-bold text-gray-900">Hall of Fame</h3>
-        <span
-          className="ml-auto text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
-          style={{ backgroundColor: colour + '15', color: colour }}
-        >
-          Week 5
-        </span>
       </div>
 
-      <div className="space-y-3">
-        {records.map((r) => (
-          <div key={r.label} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
-            <span className="text-xl">{r.icon}</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-gray-700">{r.label}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{r.holder}</p>
+      {preview.length > 0 ? (
+        <div className="space-y-3">
+          {preview.map((r) => (
+            <div key={r.slug} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+              <span className="text-xl">{r.emoji}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold text-gray-700">{r.label}</p>
+                <p className="text-xs text-gray-500 mt-0.5 truncate">{r.holderName}</p>
+              </div>
+              <span
+                className="text-[11px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
+                style={{ backgroundColor: colour + '15', color: colour }}
+              >
+                {r.value}
+              </span>
             </div>
-            <span className="text-sm font-bold text-gray-300">{r.value}</span>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-gray-400 text-center py-2">
+          Records appear as members attend events
+        </p>
+      )}
 
-      <p className="text-[11px] text-gray-400 mt-3 text-center">
-        Real stats unlock in Week 5
-      </p>
+      <Link
+        href={`/g/${slug}/hall-of-fame`}
+        className="block text-center text-xs font-semibold mt-3 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+        style={{ color: colour }}
+      >
+        View all &rarr;
+      </Link>
     </div>
   )
 }
@@ -663,6 +671,11 @@ export default async function GroupPage({
     }
   }
 
+  // Fetch hall of fame records
+  const hallOfFameRecords = isApprovedMember
+    ? await getHallOfFameRecords(group.id)
+    : []
+
   const colour = hex(group.primary_colour)
   const initialStatus = membership?.status as 'approved' | 'pending' | null ?? null
 
@@ -795,7 +808,9 @@ export default async function GroupPage({
               </div>
             )}
 
-            <HallOfFame colour={colour} />
+            {initialStatus === 'approved' && (
+              <HallOfFame records={hallOfFameRecords} colour={colour} slug={group.slug} />
+            )}
           </div>
         </div>
       </main>
