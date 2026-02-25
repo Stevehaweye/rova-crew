@@ -2,8 +2,10 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import UserMenu from './user-menu'
 import PushPermissionBanner from '@/components/PushPermissionBanner'
+import PostEventCard, { type PostEventHighlight } from '@/components/feed/PostEventCard'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -296,11 +298,13 @@ function HasGroupsContent({
   groups,
   memberCounts,
   upcomingEvents,
+  postEventHighlights,
 }: {
   profile: Profile
   groups: Group[]
   memberCounts: Record<string, number>
   upcomingEvents: UpcomingEvent[]
+  postEventHighlights: PostEventHighlight[]
 }) {
   const first = firstName(profile.full_name)
 
@@ -340,25 +344,11 @@ function HasGroupsContent({
           </section>
 
           {/* Coming up for you */}
-          <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-bold text-gray-900">Coming up for you</h2>
-            </div>
-
-            {upcomingEvents.length === 0 ? (
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-10 text-center">
-                <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mx-auto mb-4 text-gray-400">
-                  <CalendarIcon />
-                </div>
-                <p className="font-semibold text-gray-700 text-sm">No upcoming events</p>
-                <p className="text-gray-400 text-xs mt-1">
-                  Create one or{' '}
-                  <Link href="/discover" className="font-semibold hover:underline" style={{ color: '#0D7377' }}>
-                    explore groups &rarr;
-                  </Link>
-                </p>
+          {upcomingEvents.length > 0 && (
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-base font-bold text-gray-900">Coming up for you</h2>
               </div>
-            ) : (
               <div className="space-y-3">
                 {upcomingEvents.map((ev) => {
                   const start = new Date(ev.startsAt)
@@ -414,8 +404,40 @@ function HasGroupsContent({
                   )
                 })}
               </div>
-            )}
-          </section>
+            </section>
+          )}
+
+          {/* Recent highlights */}
+          {postEventHighlights.length > 0 && (
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-base font-bold text-gray-900">Recent highlights</h2>
+              </div>
+              <div className="space-y-4">
+                {postEventHighlights.map((h) => (
+                  <PostEventCard key={h.eventId} highlight={h} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Empty state — no upcoming events and no highlights */}
+          {upcomingEvents.length === 0 && postEventHighlights.length === 0 && (
+            <section>
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-6 py-10 text-center">
+                <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mx-auto mb-4 text-gray-400">
+                  <CalendarIcon />
+                </div>
+                <p className="font-semibold text-gray-700 text-sm">No events recently</p>
+                <p className="text-gray-400 text-xs mt-1">
+                  Check out what&apos;s happening across your groups.{' '}
+                  <Link href="/discover" className="font-semibold hover:underline" style={{ color: '#0D7377' }}>
+                    Explore groups &rarr;
+                  </Link>
+                </p>
+              </div>
+            </section>
+          )}
         </div>
 
         {/* ── Sidebar ────────────────────────────────────────────────── */}
@@ -597,6 +619,136 @@ export default async function HomePage() {
     }
   })
 
+  // ── Post-event highlights (past 7 days) ──────────────────────────────────
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  let postEventHighlights: PostEventHighlight[] = []
+
+  if (groups.length > 0) {
+    const svc = createServiceClient()
+
+    const { data: pastEvents } = await svc
+      .from('events')
+      .select('id, title, ends_at, group_id, cover_url')
+      .in('group_id', groupIds)
+      .lte('ends_at', now)
+      .gte('ends_at', sevenDaysAgo)
+      .order('ends_at', { ascending: false })
+      .limit(10)
+
+    if (pastEvents && pastEvents.length > 0) {
+      const pastEventIds = pastEvents.map((e) => e.id)
+
+      // Parallel fetch: attendance, photos, ratings, milestones
+      const [attendanceRes, photosRes, ratingsRes, milestonesRes] = await Promise.all([
+        svc
+          .from('rsvps')
+          .select('event_id')
+          .in('event_id', pastEventIds)
+          .not('checked_in_at', 'is', null),
+        svc
+          .from('event_photos')
+          .select('event_id, storage_path')
+          .in('event_id', pastEventIds)
+          .eq('is_hidden', false),
+        svc
+          .from('event_ratings')
+          .select('event_id, rating')
+          .in('event_id', pastEventIds),
+        svc
+          .from('badge_awards')
+          .select(
+            'group_id, awarded_at, badges:badge_id ( name, emoji ), profiles:user_id ( full_name )'
+          )
+          .in('group_id', groupIds)
+          .gte('awarded_at', sevenDaysAgo),
+      ])
+
+      // Attendance counts per event
+      const attendanceCounts: Record<string, number> = {}
+      for (const r of attendanceRes.data ?? []) {
+        attendanceCounts[r.event_id] = (attendanceCounts[r.event_id] ?? 0) + 1
+      }
+
+      // Photo counts + first photo path per event
+      const photoCounts: Record<string, number> = {}
+      const firstPhotoPath: Record<string, string> = {}
+      for (const p of photosRes.data ?? []) {
+        photoCounts[p.event_id] = (photoCounts[p.event_id] ?? 0) + 1
+        if (!firstPhotoPath[p.event_id]) {
+          firstPhotoPath[p.event_id] = p.storage_path
+        }
+      }
+
+      // Get signed URLs for cover photos (parallel)
+      const eventsNeedingCover = pastEvents.filter(
+        (e) => !e.cover_url && firstPhotoPath[e.id]
+      )
+      const coverSignResults = await Promise.all(
+        eventsNeedingCover.map(async (e) => {
+          const { data: signedData } = await svc.storage
+            .from('event-photos')
+            .createSignedUrl(firstPhotoPath[e.id], 3600)
+          return { eventId: e.id, url: signedData?.signedUrl ?? null }
+        })
+      )
+      const coverUrls: Record<string, string> = {}
+      for (const r of coverSignResults) {
+        if (r.url) coverUrls[r.eventId] = r.url
+      }
+
+      // Rating averages per event
+      const ratingData: Record<string, { sum: number; count: number }> = {}
+      for (const r of ratingsRes.data ?? []) {
+        if (!ratingData[r.event_id]) ratingData[r.event_id] = { sum: 0, count: 0 }
+        ratingData[r.event_id].sum += r.rating
+        ratingData[r.event_id].count++
+      }
+
+      // Build highlights
+      postEventHighlights = pastEvents.map((e) => {
+        const g = groupMap[e.group_id]
+        const eventEnd = new Date(e.ends_at)
+        const milestoneCutoff = new Date(eventEnd.getTime() + 24 * 60 * 60 * 1000)
+
+        // Match milestones to this event's group and time window
+        const eventMilestones = (milestonesRes.data ?? [])
+          .filter((m) => {
+            return (
+              m.group_id === e.group_id &&
+              new Date(m.awarded_at) >= eventEnd &&
+              new Date(m.awarded_at) <= milestoneCutoff
+            )
+          })
+          .map((m) => {
+            const badge = m.badges as unknown as { name: string; emoji: string } | null
+            const profile = m.profiles as unknown as { full_name: string } | null
+            return {
+              memberName: profile?.full_name?.split(' ')[0] ?? 'Member',
+              badgeName: badge?.name ?? 'Badge',
+              badgeEmoji: badge?.emoji ?? '🏆',
+            }
+          })
+
+        const rd = ratingData[e.id]
+        const avgRating = rd ? Math.round((rd.sum / rd.count) * 10) / 10 : 0
+
+        return {
+          eventId: e.id,
+          eventTitle: e.title,
+          endsAt: e.ends_at,
+          groupName: g?.name ?? 'Group',
+          groupColour: hex(g?.primary_colour ?? '0D7377'),
+          groupSlug: g?.slug ?? '',
+          attendedCount: attendanceCounts[e.id] ?? 0,
+          avgRating,
+          photoCount: photoCounts[e.id] ?? 0,
+          coverPhotoUrl: e.cover_url ?? coverUrls[e.id] ?? null,
+          milestones: eventMilestones,
+        }
+      })
+    }
+  }
+
   const hasGroups = groups.length > 0
 
   return (
@@ -611,6 +763,7 @@ export default async function HomePage() {
             groups={groups}
             memberCounts={memberCounts}
             upcomingEvents={upcomingEvents}
+            postEventHighlights={postEventHighlights}
           />
         ) : (
           <EmptyState name={profile.full_name} />
