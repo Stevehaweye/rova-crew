@@ -343,6 +343,7 @@ const NAV_ITEMS = [
   { icon: '💬', label: 'Chat',           key: 'chat',          available: true  },
   { icon: '📢', label: 'Blast',          key: 'blast',         available: true  },
   { icon: '🏆', label: 'Gamification',   key: 'gamification',  available: true  },
+  { icon: '📸', label: 'Photos',         key: 'photos',        available: false },
   { icon: '⚙️', label: 'Settings',       key: 'settings',      available: true  },
 ]
 
