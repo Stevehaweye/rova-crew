@@ -12,6 +12,7 @@ const ALLOWED_KEYS = [
   'event_chat',
   'announcements',
   'rsvp_milestones',
+  'health_alerts',
 ] as const
 
 type PreferenceKey = (typeof ALLOWED_KEYS)[number]
@@ -26,6 +27,7 @@ const DEFAULTS: Record<PreferenceKey, boolean> = {
   event_chat: true,
   announcements: true,
   rsvp_milestones: true,
+  health_alerts: true,
 }
 
 export async function GET() {

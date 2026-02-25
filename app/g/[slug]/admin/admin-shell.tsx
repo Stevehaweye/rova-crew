@@ -41,6 +41,16 @@ interface UpcomingEvent {
   rsvpCount: number
 }
 
+interface HealthScoreData {
+  score: number
+  previous_score: number | null
+  signal_attendance: number
+  signal_retention: number
+  signal_frequency: number
+  signal_growth: number
+  signal_engagement: number
+}
+
 export interface AdminData {
   group: Group
   profile: Profile
@@ -50,6 +60,7 @@ export interface AdminData {
   appUrl: string
   upcomingEvents: UpcomingEvent[]
   stripeConnected: boolean
+  healthData: HealthScoreData | null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -78,21 +89,16 @@ function formatDate(dateStr: string) {
   })
 }
 
-function healthScore(memberCount: number): number {
-  // Week 1 formula — full formula unlocks in Week 5
-  return memberCount > 0 ? 50 : 0
-}
-
 function healthColor(score: number): string {
-  if (score >= 70) return '#16A34A'
-  if (score >= 40) return '#D97706'
+  if (score >= 80) return '#16A34A'
+  if (score >= 60) return '#D97706'
   return '#DC2626'
 }
 
 function healthLabel(score: number): string {
-  if (score >= 70) return 'Great shape'
-  if (score >= 40) return 'Building up'
-  return 'Just starting'
+  if (score >= 80) return 'Great shape'
+  if (score >= 60) return 'Building up'
+  return 'Needs attention'
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -196,40 +202,113 @@ function SignOutIcon() {
 
 // ─── Health Score Ring ────────────────────────────────────────────────────────
 
-function HealthRing({ score }: { score: number }) {
+function HealthRing({
+  score,
+  previousScore,
+  signals,
+  expanded,
+  onToggleExpand,
+}: {
+  score: number
+  previousScore?: number | null
+  signals?: {
+    attendance: number
+    retention: number
+    frequency: number
+    growth: number
+    engagement: number
+  } | null
+  expanded?: boolean
+  onToggleExpand?: () => void
+}) {
   const color = healthColor(score)
   const label = healthLabel(score)
+  const delta = previousScore != null ? score - previousScore : null
   // r = 15.9155 → circumference ≈ 100 (convenient unit scale)
   const r = 15.9155
   const circumference = 100
   const dashArray = `${(score / 100) * circumference} ${circumference - (score / 100) * circumference}`
 
+  const SIGNAL_ROWS = [
+    { label: 'Attendance rate', key: 'attendance' as const, max: 30 },
+    { label: 'Member retention', key: 'retention' as const, max: 25 },
+    { label: 'Event frequency', key: 'frequency' as const, max: 20 },
+    { label: 'Member growth', key: 'growth' as const, max: 15 },
+    { label: 'Community engagement', key: 'engagement' as const, max: 10 },
+  ]
+
   return (
-    <div className="flex items-center gap-3 mt-1">
-      <div className="relative w-14 h-14 flex-shrink-0">
-        {/* -rotate-90 starts the arc at 12 o'clock */}
-        <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-          <circle cx="18" cy="18" r={r} fill="none" stroke="#F3F4F6" strokeWidth="3" />
-          <circle
-            cx="18" cy="18" r={r}
-            fill="none"
-            stroke={color}
-            strokeWidth="3"
-            strokeDasharray={dashArray}
-            strokeLinecap="round"
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-sm font-black" style={{ color }}>{score}</span>
+    <div>
+      <button
+        type="button"
+        onClick={onToggleExpand}
+        className="flex items-center gap-3 mt-1 w-full text-left"
+      >
+        <div className="relative w-14 h-14 flex-shrink-0">
+          {/* -rotate-90 starts the arc at 12 o'clock */}
+          <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+            <circle cx="18" cy="18" r={r} fill="none" stroke="#F3F4F6" strokeWidth="3" />
+            <circle
+              cx="18" cy="18" r={r}
+              fill="none"
+              stroke={color}
+              strokeWidth="3"
+              strokeDasharray={dashArray}
+              strokeLinecap="round"
+            />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-sm font-black" style={{ color }}>{score}</span>
+          </div>
         </div>
-      </div>
-      <div>
-        <p className="text-2xl font-black text-gray-900 leading-none">
-          {score}
-          <span className="text-sm font-normal text-gray-400">/100</span>
-        </p>
-        <p className="text-xs font-semibold mt-1" style={{ color }}>{label}</p>
-      </div>
+        <div>
+          <p className="text-2xl font-black text-gray-900 leading-none">
+            {score}
+            <span className="text-sm font-normal text-gray-400">/100</span>
+          </p>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-xs font-semibold" style={{ color }}>{label}</p>
+            {delta !== null && delta !== 0 && (
+              <span className={`text-[10px] font-bold ${delta > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                {delta > 0 ? `↑ from ${previousScore}` : `↓ from ${previousScore}`}
+              </span>
+            )}
+          </div>
+        </div>
+      </button>
+
+      {/* Signal breakdown table */}
+      {expanded && signals && (
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <div className="space-y-2">
+            {SIGNAL_ROWS.map((s) => {
+              const value = Number(signals[s.key]) || 0
+              const pct = s.max > 0 ? (value / s.max) * 100 : 0
+              return (
+                <div key={s.key} className="flex items-center gap-2">
+                  <span className="text-[10px] text-gray-500 w-[90px] flex-shrink-0 truncate">{s.label}</span>
+                  <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{
+                        width: `${pct}%`,
+                        backgroundColor: healthColor(pct),
+                      }}
+                    />
+                  </div>
+                  <span className="text-[10px] font-semibold text-gray-600 w-8 text-right">
+                    {value}/{s.max}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+          <div className="flex justify-between mt-2 pt-2 border-t border-gray-50">
+            <span className="text-[10px] font-bold text-gray-700">TOTAL</span>
+            <span className="text-[10px] font-bold text-gray-700">{score}/100</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -720,13 +799,15 @@ export default function AdminShell({
   appUrl,
   upcomingEvents,
   stripeConnected,
+  healthData,
 }: AdminData) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [shareModalOpen, setShareModalOpen] = useState(false)
+  const [healthExpanded, setHealthExpanded] = useState(false)
 
   const colour = hex(group.primary_colour)
   const groupUrl = `${appUrl}/g/${group.slug}`
-  const score = healthScore(memberCount)
+  const score = healthData?.score ?? 0
   const scoreColor = healthColor(score)
 
   // Close mobile sidebar on desktop resize
@@ -863,7 +944,19 @@ export default function AdminShell({
 
               {/* Group Health */}
               <StatCard icon={<HeartIcon />} label="Group Health" accentColor={scoreColor}>
-                <HealthRing score={score} />
+                <HealthRing
+                  score={score}
+                  previousScore={healthData?.previous_score}
+                  signals={healthData ? {
+                    attendance: Number(healthData.signal_attendance),
+                    retention: Number(healthData.signal_retention),
+                    frequency: Number(healthData.signal_frequency),
+                    growth: Number(healthData.signal_growth),
+                    engagement: Number(healthData.signal_engagement),
+                  } : null}
+                  expanded={healthExpanded}
+                  onToggleExpand={() => setHealthExpanded((v) => !v)}
+                />
               </StatCard>
             </div>
 

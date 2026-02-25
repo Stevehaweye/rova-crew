@@ -189,6 +189,10 @@ export function JoinCard({
       // Fire-and-forget: check if this member was a guest who converted
       fetch(`/api/groups/${groupSlug}/check-guest-conversion`, { method: 'POST' })
         .catch(() => {})
+
+      // Fire-and-forget: recalculate group health score
+      fetch(`/api/groups/${groupSlug}/health-score-recalc`, { method: 'POST' })
+        .catch(() => {})
     } else {
       setStatus('pending')
     }

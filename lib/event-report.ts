@@ -1,5 +1,6 @@
 import { createServiceClient } from '@/lib/supabase/service'
 import { generateEventSummary } from '@/lib/post-event-summary'
+import { calculateGroupHealthScore } from '@/lib/health-score'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -191,6 +192,11 @@ export async function generateEventReport(
     summary.attendance.attendedCount > 0
       ? Math.round((summary.ratings.ratingCount / summary.attendance.attendedCount) * 100)
       : 0
+
+  // Recalculate group health score (fire-and-forget)
+  calculateGroupHealthScore(summary.group.id).catch((err) =>
+    console.error('[event-report] health score recalc error:', err)
+  )
 
   return {
     event: summary.event,

@@ -30,6 +30,7 @@ const NOTIFICATION_TYPE_TO_PREF: Record<string, string> = {
   rsvp_milestone: 'rsvp_milestones',
   tier_promotion: 'tier_promotions',
   badge_celebration: 'badge_celebrations',
+  health_alert: 'health_alerts',
 }
 
 /**

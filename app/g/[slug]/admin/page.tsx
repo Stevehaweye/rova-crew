@@ -56,6 +56,7 @@ export default async function AdminPage({
     weekCountResult,
     recentResult,
     upcomingEventsResult,
+    healthScoreResult,
   ] = await Promise.all([
     supabase
       .from('profiles')
@@ -95,6 +96,13 @@ export default async function AdminPage({
       .gte('starts_at', now)
       .order('starts_at', { ascending: true })
       .limit(5),
+
+    // Group health score
+    supabase
+      .from('group_health_scores')
+      .select('score, previous_score, signal_attendance, signal_retention, signal_frequency, signal_growth, signal_engagement')
+      .eq('group_id', group.id)
+      .maybeSingle(),
   ])
 
   const profile = profileResult.data ?? {
@@ -116,6 +124,7 @@ export default async function AdminPage({
   })
 
   const upcomingEvents = upcomingEventsResult.data ?? []
+  const healthData = healthScoreResult.data ?? null
 
   // Fetch RSVP counts for each upcoming event
   const eventRsvpCounts: Record<string, number> = {}
@@ -161,6 +170,7 @@ export default async function AdminPage({
       recentMembers={recentMembers}
       appUrl={appUrl}
       stripeConnected={stripeConnected}
+      healthData={healthData}
       upcomingEvents={upcomingEvents.map((e) => ({
         id: e.id,
         title: e.title,

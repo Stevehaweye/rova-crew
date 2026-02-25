@@ -4,6 +4,7 @@ import { awardSpiritPoints } from '@/lib/spirit-points'
 import { recalculateGroupCrewScores } from '@/lib/crew-score'
 import { checkAndAwardBadges } from '@/lib/badges'
 import { updateStreakOnCheckIn } from '@/lib/streaks'
+import { calculateGroupHealthScore } from '@/lib/health-score'
 
 // ─── POST: Check in a member or guest ────────────────────────────────────────
 
@@ -117,6 +118,10 @@ export async function POST(
       // Update attendance streak (fire-and-forget)
       updateStreakOnCheckIn(user_id, event.group_id, eventId)
         .catch((err) => console.error('[checkin] streak update error:', err))
+
+      // Recalculate group health score (fire-and-forget)
+      calculateGroupHealthScore(event.group_id)
+        .catch((err) => console.error('[checkin] health score error:', err))
 
       const profile = rsvp.profiles as unknown as { full_name: string; avatar_url: string | null }
 
