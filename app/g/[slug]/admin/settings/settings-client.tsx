@@ -27,11 +27,12 @@ interface Props {
   dmEnabled: boolean
   tierTheme: string
   badgeAnnouncementsEnabled: boolean
+  watermarkPhotos: boolean
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function SettingsClient({ group, stripe, membershipFee, dmEnabled: initialDmEnabled, tierTheme: initialTierTheme, badgeAnnouncementsEnabled: initialBadgeAnnounce }: Props) {
+export default function SettingsClient({ group, stripe, membershipFee, dmEnabled: initialDmEnabled, tierTheme: initialTierTheme, badgeAnnouncementsEnabled: initialBadgeAnnounce, watermarkPhotos: initialWatermark }: Props) {
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -53,6 +54,10 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
   const [theme, setTheme] = useState(initialTierTheme)
   const [announceOn, setAnnounceOn] = useState(initialBadgeAnnounce)
   const [gamifSaving, setGamifSaving] = useState(false)
+
+  // Watermark state
+  const [watermarkOn, setWatermarkOn] = useState(initialWatermark)
+  const [watermarkSaving, setWatermarkSaving] = useState(false)
 
   // Show toast on return from Stripe
   useEffect(() => {
@@ -181,6 +186,26 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
       setToast('Network error. Please try again.')
     }
     setGamifSaving(false)
+  }
+
+  async function handleSaveWatermark() {
+    setWatermarkSaving(true)
+    try {
+      const res = await fetch(`/api/groups/${group.slug}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ watermark_photos: watermarkOn }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setToast(data.error || 'Failed to save')
+      } else {
+        setToast(watermarkOn ? 'Watermarking enabled for shared photos' : 'Watermarking disabled')
+      }
+    } catch {
+      setToast('Network error. Please try again.')
+    }
+    setWatermarkSaving(false)
   }
 
   return (
@@ -534,6 +559,57 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
               style={{ backgroundColor: group.colour }}
             >
               {gamifSaving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </section>
+        {/* ── Photo Watermarking ──────────────────────────────── */}
+        <section className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center">
+              <svg className="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-900">Photo Watermarking</p>
+              <p className="text-xs text-gray-500">Add group branding to shared event photos</p>
+            </div>
+          </div>
+
+          <div className="px-5 py-5 space-y-4">
+            <label className="flex items-center justify-between cursor-pointer">
+              <span className="text-sm font-medium text-gray-700">Watermark shared photos</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={watermarkOn}
+                onClick={() => setWatermarkOn(!watermarkOn)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  watermarkOn ? 'bg-teal-500' : 'bg-gray-200'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${
+                    watermarkOn ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </label>
+
+            <p className="text-xs text-gray-400">
+              {watermarkOn
+                ? 'Photos shared from this group will include your group logo and name.'
+                : 'Photos will be shared without group branding.'}
+            </p>
+
+            <button
+              onClick={handleSaveWatermark}
+              disabled={watermarkSaving}
+              className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+              style={{ backgroundColor: group.colour }}
+            >
+              {watermarkSaving ? 'Saving...' : 'Save'}
             </button>
           </div>
         </section>
