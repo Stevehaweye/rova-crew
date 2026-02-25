@@ -108,7 +108,7 @@ function CalendarIcon() {
 
 // ─── Top Navigation ───────────────────────────────────────────────────────────
 
-function TopNav({ profile }: { profile: Profile }) {
+function TopNav({ profile, groupSlug }: { profile: Profile; groupSlug?: string | null }) {
   const name = profile.full_name
   const abbr = initials(name)
 
@@ -126,7 +126,7 @@ function TopNav({ profile }: { profile: Profile }) {
         </Link>
 
         {/* User identity */}
-        <UserMenu name={name} avatarUrl={profile.avatar_url} initials={abbr} />
+        <UserMenu name={name} avatarUrl={profile.avatar_url} initials={abbr} groupSlug={groupSlug} />
       </div>
     </nav>
   )
@@ -601,7 +601,7 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      <TopNav profile={profile} />
+      <TopNav profile={profile} groupSlug={groups[0]?.slug ?? null} />
 
       <main>
         <PushPermissionBanner />
