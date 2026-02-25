@@ -1,4 +1,5 @@
 import { createServiceClient } from '@/lib/supabase/service'
+import { checkAndAwardBadges } from '@/lib/badges'
 
 // ─── Action config ──────────────────────────────────────────────────────────
 
@@ -23,12 +24,6 @@ export interface AwardResult {
   points: number
   totalThisWeek: number
   reason?: string
-}
-
-interface BadgeCriteria {
-  type: string
-  value: number | boolean
-  min_events?: number
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -136,118 +131,5 @@ export async function awardSpiritPoints(
   return { awarded: true, points, totalThisWeek: totalThisWeek + points }
 }
 
-// ─── checkAndAwardBadges ───────────────────────────────────────────────────
-
-export async function checkAndAwardBadges(
-  userId: string,
-  groupId: string
-): Promise<string[]> {
-  const svc = createServiceClient()
-
-  // Parallel fetch all needed data
-  const [statsResult, badgesResult, awardsResult, membershipResult, groupResult] =
-    await Promise.all([
-      svc
-        .from('member_stats')
-        .select('*')
-        .eq('user_id', userId)
-        .eq('group_id', groupId)
-        .maybeSingle(),
-      svc.from('badges').select('id, slug, criteria'),
-      svc
-        .from('badge_awards')
-        .select('badge_id')
-        .eq('user_id', userId)
-        .eq('group_id', groupId),
-      svc
-        .from('group_members')
-        .select('joined_at')
-        .eq('user_id', userId)
-        .eq('group_id', groupId)
-        .maybeSingle(),
-      svc.from('groups').select('created_at').eq('id', groupId).maybeSingle(),
-    ])
-
-  const stats = statsResult.data
-  if (!stats) return [] // no member_stats row yet
-
-  const badges = badgesResult.data ?? []
-  const existingAwardIds = new Set((awardsResult.data ?? []).map((a) => a.badge_id))
-  const joinedAt = membershipResult.data?.joined_at
-    ? new Date(membershipResult.data.joined_at)
-    : null
-  const groupCreatedAt = groupResult.data?.created_at
-    ? new Date(groupResult.data.created_at)
-    : null
-
-  // Compute derived values
-  const now = new Date()
-  const tenureDays = joinedAt ? Math.floor((now.getTime() - joinedAt.getTime()) / 86400000) : 0
-  const isFoundingMember =
-    joinedAt && groupCreatedAt
-      ? joinedAt.getTime() - groupCreatedAt.getTime() <= 30 * 86400000
-      : false
-
-  // Evaluate each unawarded badge
-  const newAwards: { user_id: string; group_id: string; badge_id: string }[] = []
-
-  for (const badge of badges) {
-    if (existingAwardIds.has(badge.id)) continue
-
-    const criteria = badge.criteria as BadgeCriteria
-    if (!criteria?.type) continue
-
-    let earned = false
-
-    switch (criteria.type) {
-      case 'events_attended':
-        earned = stats.events_attended >= (criteria.value as number)
-        break
-      case 'attendance_rate':
-        earned =
-          stats.attendance_rate >= (criteria.value as number) &&
-          stats.events_attended >= (criteria.min_events ?? 0)
-        break
-      case 'messages_sent':
-        earned = stats.messages_sent >= (criteria.value as number)
-        break
-      case 'reactions_given':
-        earned = stats.reactions_given >= (criteria.value as number)
-        break
-      case 'guest_converts':
-        earned = stats.guest_converts >= (criteria.value as number)
-        break
-      case 'current_streak':
-        // Use best_streak so badges aren't lost when streak resets
-        earned = stats.best_streak >= (criteria.value as number)
-        break
-      case 'tenure_days':
-        earned = tenureDays >= (criteria.value as number)
-        break
-      case 'founding_member':
-        earned = isFoundingMember
-        break
-    }
-
-    if (earned) {
-      newAwards.push({ user_id: userId, group_id: groupId, badge_id: badge.id })
-    }
-  }
-
-  if (newAwards.length === 0) return []
-
-  // Batch insert, skip conflicts (badge already awarded)
-  const { error } = await svc
-    .from('badge_awards')
-    .insert(newAwards)
-    .select('badge_id')
-
-  if (error) {
-    console.error('[spirit-points] badge award error:', error)
-    return []
-  }
-
-  // Return slugs of newly awarded badges
-  const awardedBadgeIds = new Set(newAwards.map((a) => a.badge_id))
-  return badges.filter((b) => awardedBadgeIds.has(b.id)).map((b) => b.slug)
-}
+// Re-export for consumers that used to import from here
+export { checkAndAwardBadges } from '@/lib/badges'
