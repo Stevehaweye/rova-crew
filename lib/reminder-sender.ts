@@ -57,7 +57,7 @@ async function processJob(
   // Fetch event + group
   const { data: event } = await supabase
     .from('events')
-    .select('id, title, starts_at, ends_at, location, group_id, groups ( name, slug )')
+    .select('id, title, starts_at, ends_at, location, group_id, created_by, groups ( name, slug )')
     .eq('id', job.event_id)
     .single()
 
@@ -85,6 +85,8 @@ async function processJob(
       return send2hReminder(supabase, event, eventUrl, eventTime)
     case 'post_event':
       return sendPostEventReminder(supabase, event, eventUrl)
+    case 'event_summary':
+      return sendEventSummaryReminder(supabase, event)
     default:
       console.warn(`[reminders] unknown type: ${job.reminder_type}`)
       return 0
@@ -283,6 +285,72 @@ async function sendPostEventReminder(
   // Check for streak breaks (fire-and-forget)
   checkStreakBreaks(event.id, event.group_id)
     .catch((err) => console.error('[reminders] streak break check error:', err))
+
+  return rsvps.length
+}
+
+// ── Event summary: 24h post-event push + system chat message ────────────────
+
+async function sendEventSummaryReminder(
+  supabase: ReturnType<typeof createServiceClient>,
+  event: { id: string; title: string; group_id: string; created_by: string }
+): Promise<number> {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+
+  // Fetch checked-in attendees
+  const { data: rsvps } = await supabase
+    .from('rsvps')
+    .select('user_id')
+    .eq('event_id', event.id)
+    .not('checked_in_at', 'is', null)
+
+  if (!rsvps || rsvps.length === 0) return 0
+
+  // Get photo count for notification body
+  const { count: photoCount } = await supabase
+    .from('event_photos')
+    .select('*', { count: 'exact', head: true })
+    .eq('event_id', event.id)
+    .eq('is_hidden', false)
+
+  const attendedCount = rsvps.length
+  const photos = photoCount ?? 0
+  const bodyParts = [`${attendedCount} people attended`]
+  if (photos > 0) bodyParts.push(`${photos} photos`)
+  bodyParts.push('tap to see the full recap')
+
+  // Send push notifications
+  await Promise.allSettled(
+    rsvps.map((rsvp) =>
+      sendPushToUser(
+        rsvp.user_id,
+        {
+          title: `📋 ${event.title} — here's your event summary`,
+          body: bodyParts.join(' • '),
+          url: `${appUrl}/events/${event.id}/summary`,
+        },
+        'event_reminder'
+      ).catch((err) => console.error('[reminders] push error:', err))
+    )
+  )
+
+  // Post system message to event chat (if channel exists)
+  const { data: channel } = await supabase
+    .from('channels')
+    .select('id')
+    .eq('event_id', event.id)
+    .eq('type', 'event_chat')
+    .maybeSingle()
+
+  if (channel?.id) {
+    const { error: msgErr } = await supabase.from('messages').insert({
+      channel_id: channel.id,
+      sender_id: event.created_by,
+      content: `📋 Event summary is ready — see who was there, photos, and highlights. ${appUrl}/events/${event.id}/summary`,
+      content_type: 'system',
+    })
+    if (msgErr) console.error('[reminders] system message error:', msgErr)
+  }
 
   return rsvps.length
 }
