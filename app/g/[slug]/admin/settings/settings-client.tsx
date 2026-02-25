@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import { TIER_THEMES } from '@/lib/tier-themes'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -24,11 +25,13 @@ interface Props {
     feePence: number | null
   }
   dmEnabled: boolean
+  tierTheme: string
+  badgeAnnouncementsEnabled: boolean
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function SettingsClient({ group, stripe, membershipFee, dmEnabled: initialDmEnabled }: Props) {
+export default function SettingsClient({ group, stripe, membershipFee, dmEnabled: initialDmEnabled, tierTheme: initialTierTheme, badgeAnnouncementsEnabled: initialBadgeAnnounce }: Props) {
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -45,6 +48,11 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
   )
   const [feeSaving, setFeeSaving] = useState(false)
   const [feeError, setFeeError] = useState('')
+
+  // Gamification state
+  const [theme, setTheme] = useState(initialTierTheme)
+  const [announceOn, setAnnounceOn] = useState(initialBadgeAnnounce)
+  const [gamifSaving, setGamifSaving] = useState(false)
 
   // Show toast on return from Stripe
   useEffect(() => {
@@ -152,6 +160,27 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
       setToast('Network error. Please try again.')
     }
     setDmSaving(false)
+  }
+
+  async function handleSaveGamification() {
+    setGamifSaving(true)
+    try {
+      const res = await fetch(`/api/groups/${group.slug}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier_theme: theme, badge_announcements_enabled: announceOn }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setToast(data.error || 'Failed to save')
+      } else {
+        const themeLabel = theme.charAt(0).toUpperCase() + theme.slice(1).replace('_', ' ')
+        setToast(`Tier theme set to ${themeLabel}`)
+      }
+    } catch {
+      setToast('Network error. Please try again.')
+    }
+    setGamifSaving(false)
   }
 
   return (
@@ -427,6 +456,84 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
               style={{ backgroundColor: group.colour }}
             >
               {dmSaving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </section>
+
+        {/* ── Gamification — Tier Theme ───────────────────────────── */}
+        <section className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+              <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 0 1 3 3h-15a3 3 0 0 1 3-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 0 1-.982-3.172M9.497 14.25a7.454 7.454 0 0 0 .981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 0 0 7.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M18.75 4.236c.982.143 1.954.317 2.916.52A6.003 6.003 0 0 1 16.27 9.728M18.75 4.236V4.5c0 2.108-.966 3.99-2.48 5.228m0 0a6.023 6.023 0 0 1-2.77.853m0 0H11m3 0a6.023 6.023 0 0 0 2.77-.853" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-900">Gamification</p>
+              <p className="text-xs text-gray-500">Choose tier names and announcement settings</p>
+            </div>
+          </div>
+
+          <div className="px-5 py-5 space-y-5">
+            {/* Theme label */}
+            <div>
+              <p className="text-xs font-semibold text-gray-500 mb-3">Tier naming theme</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {Object.entries(TIER_THEMES).map(([key, tiers]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setTheme(key)}
+                    className={`text-left p-3 rounded-xl border-2 transition-all ${
+                      theme === key
+                        ? 'border-current shadow-sm'
+                        : 'border-gray-100 hover:border-gray-200'
+                    }`}
+                    style={theme === key ? { borderColor: group.colour } : undefined}
+                  >
+                    <p className="text-xs font-bold text-gray-900 capitalize mb-1">
+                      {key.replace('_', ' ')}
+                    </p>
+                    <p className="text-[10px] text-gray-400 leading-relaxed">
+                      {tiers.join(' \u2192 ')}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Badge announcements toggle */}
+            <label className="flex items-center justify-between cursor-pointer">
+              <div>
+                <span className="text-sm font-medium text-gray-700">Tier-up announcements</span>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Post in announcements when a member reaches a new tier
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={announceOn}
+                onClick={() => setAnnounceOn(!announceOn)}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                  announceOn ? 'bg-teal-500' : 'bg-gray-200'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${
+                    announceOn ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </label>
+
+            <button
+              onClick={handleSaveGamification}
+              disabled={gamifSaving}
+              className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+              style={{ backgroundColor: group.colour }}
+            >
+              {gamifSaving ? 'Saving...' : 'Save'}
             </button>
           </div>
         </section>

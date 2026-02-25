@@ -47,17 +47,25 @@ export async function POST(
     }
 
     const body = await request.json()
-    const { allow_dm } = body as { allow_dm: boolean }
 
-    if (typeof allow_dm !== 'boolean') {
-      return NextResponse.json({ error: 'Invalid value for allow_dm' }, { status: 400 })
+    // Build update object from valid fields
+    const updates: Record<string, unknown> = {}
+
+    if (typeof body.allow_dm === 'boolean') updates.allow_dm = body.allow_dm
+    if (typeof body.tier_theme === 'string') updates.tier_theme = body.tier_theme
+    if (typeof body.badge_announcements_enabled === 'boolean') {
+      updates.badge_announcements_enabled = body.badge_announcements_enabled
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: 'No valid fields provided' }, { status: 400 })
     }
 
     const serviceClient = createServiceClient()
 
     await serviceClient
       .from('groups')
-      .update({ allow_dm })
+      .update(updates)
       .eq('id', group.id)
 
     return NextResponse.json({ success: true })

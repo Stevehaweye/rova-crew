@@ -1,4 +1,10 @@
 import { createServiceClient } from '@/lib/supabase/service'
+import { sendPushToUser } from '@/lib/push-sender'
+import { getMemberTier } from '@/lib/tier-themes'
+
+// Re-export for consumers
+export { getMemberTier, TIER_THEMES } from '@/lib/tier-themes'
+export type { TierInfo } from '@/lib/tier-themes'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -11,57 +17,6 @@ export interface CrewScoreResult {
   tier: string
   rank: number
   totalMembers: number
-}
-
-export interface TierInfo {
-  tier: string
-  level: number
-  threshold: number
-}
-
-// ─── Tier themes ────────────────────────────────────────────────────────────
-
-const TIER_THRESHOLDS = [
-  { min: 0,   max: 199,  level: 1 },
-  { min: 200, max: 399,  level: 2 },
-  { min: 400, max: 699,  level: 3 },
-  { min: 700, max: 899,  level: 4 },
-  { min: 900, max: 1000, level: 5 },
-]
-
-const TIER_THEMES: Record<string, [string, string, string, string, string]> = {
-  generic:       ['Newcomer',   'Regular',    'Dedicated',    'Veteran',    'Legend'],
-  running:       ['Rookie',     'Pacer',      'Racer',        'Marathoner', 'Ultra'],
-  cycling:       ['Stabiliser', 'Sprinter',   'Climber',      'Peloton',    'Maillot'],
-  hiking:        ['Rambler',    'Trekker',    'Pathfinder',   'Summiteer',  'Mountaineer'],
-  book_club:     ['Browser',    'Reader',     'Bookworm',     'Curator',    'Librarian'],
-  knitting:      ['Caster-on',  'Stitcher',   'Knitter',      'Artisan',    'Master'],
-  yoga:          ['Beginner',   'Student',    'Practitioner',  'Yogi',      'Guru'],
-  football:      ['Sub',        'Starter',    'Playmaker',    'Captain',    'Legend'],
-  social:        ['Newbie',     'Regular',    'Connector',    'Influencer', 'Icon'],
-  volunteering:  ['Helper',     'Supporter',  'Champion',     'Leader',     'Hero'],
-  photography:   ['Snapper',    'Shooter',    'Photographer', 'Artist',     'Visionary'],
-}
-
-// ─── getMemberTier ──────────────────────────────────────────────────────────
-
-export function getMemberTier(
-  crewScore: number,
-  tierTheme?: string,
-  customTierNames?: string[] | null
-): TierInfo {
-  const clamped = Math.max(0, Math.min(1000, Math.round(crewScore)))
-  const bracket = TIER_THRESHOLDS.find((t) => clamped >= t.min && clamped <= t.max)!
-  const level = bracket.level
-  const idx = level - 1
-
-  // Custom theme: use provided names, fall back to generic
-  if (tierTheme === 'custom' && customTierNames && customTierNames.length === 5) {
-    return { tier: customTierNames[idx], level, threshold: bracket.min }
-  }
-
-  const theme = TIER_THEMES[tierTheme ?? 'generic'] ?? TIER_THEMES.generic
-  return { tier: theme[idx], level, threshold: bracket.min }
 }
 
 // ─── Percentile helper ──────────────────────────────────────────────────────
@@ -307,7 +262,7 @@ export async function recalculateGroupCrewScores(groupId: string): Promise<void>
   const [statsResult, membersResult, groupResult] = await Promise.all([
     svc
       .from('member_stats')
-      .select('user_id, attendance_rate, events_attended, current_streak, spirit_points_total, messages_sent, reactions_given, best_streak, guest_converts')
+      .select('user_id, crew_score, tier, attendance_rate, events_attended, current_streak, spirit_points_total, messages_sent, reactions_given, best_streak, guest_converts')
       .eq('group_id', groupId),
     svc
       .from('group_members')
@@ -372,7 +327,10 @@ export async function recalculateGroupCrewScores(groupId: string): Promise<void>
   const rankMap = new Map<string, number>()
   ranked.forEach((s, i) => rankMap.set(s.userId, i + 1))
 
-  // Batch update member_stats in chunks of 10
+  // Detect tier promotions + enforce tier-only-increases
+  interface TierPromotion { userId: string; newTier: string; newLevel: number }
+  const promotions: TierPromotion[] = []
+
   const nowISO = now.toISOString()
   const CHUNK_SIZE = 10
 
@@ -380,7 +338,20 @@ export async function recalculateGroupCrewScores(groupId: string): Promise<void>
     const chunk = allScores.slice(i, i + CHUNK_SIZE)
     await Promise.all(
       chunk.map((s) => {
-        const tierInfo = getMemberTier(s.crewScore, tierTheme, customTierNames)
+        const oldStats = statsMap.get(s.userId)
+        const oldCrewScore = oldStats?.crew_score ?? 0
+        const oldTierLevel = getMemberTier(oldCrewScore, tierTheme, customTierNames).level
+        const newTierInfo = getMemberTier(s.crewScore, tierTheme, customTierNames)
+
+        // Tier can only increase, never decrease
+        let finalTier: string
+        if (newTierInfo.level > oldTierLevel) {
+          finalTier = newTierInfo.tier
+          promotions.push({ userId: s.userId, newTier: newTierInfo.tier, newLevel: newTierInfo.level })
+        } else {
+          finalTier = oldStats?.tier ?? newTierInfo.tier
+        }
+
         return svc
           .from('member_stats')
           .upsert(
@@ -388,7 +359,7 @@ export async function recalculateGroupCrewScores(groupId: string): Promise<void>
               user_id: s.userId,
               group_id: groupId,
               crew_score: s.crewScore,
-              tier: tierInfo.tier,
+              tier: finalTier,
               loyalty_score: s.loyalty,
               spirit_score: s.spirit,
               adventure_score: s.adventure,
@@ -399,5 +370,59 @@ export async function recalculateGroupCrewScores(groupId: string): Promise<void>
           )
       })
     )
+  }
+
+  // Fire-and-forget: send tier promotion notifications
+  if (promotions.length > 0) {
+    handleTierPromotions(groupId, promotions, svc).catch((err) =>
+      console.error('[crew-score] tier promotion error:', err)
+    )
+  }
+}
+
+// ─── Tier promotion notifications ───────────────────────────────────────────
+
+async function handleTierPromotions(
+  groupId: string,
+  promotions: { userId: string; newTier: string; newLevel: number }[],
+  svc: ReturnType<typeof createServiceClient>
+): Promise<void> {
+  const [groupResult, channelResult] = await Promise.all([
+    svc.from('groups').select('name, slug, badge_announcements_enabled').eq('id', groupId).single(),
+    svc.from('channels').select('id').eq('group_id', groupId).eq('type', 'announcements').maybeSingle(),
+  ])
+
+  const group = groupResult.data
+  if (!group) return
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+
+  // Fetch profile names for system messages
+  const userIds = promotions.map((p) => p.userId)
+  const { data: profiles } = await svc
+    .from('profiles')
+    .select('id, full_name')
+    .in('id', userIds)
+  const nameMap = new Map((profiles ?? []).map((p) => [p.id, p.full_name]))
+
+  for (const promo of promotions) {
+    const name = nameMap.get(promo.userId) ?? 'A member'
+
+    // 1. Push notification to the promoted user
+    sendPushToUser(promo.userId, {
+      title: 'New tier unlocked!',
+      body: `You\u2019re now a ${promo.newTier} in ${group.name}. Keep it up!`,
+      url: `${appUrl}/g/${group.slug}`,
+    }, 'tier_promotion').catch(() => {})
+
+    // 2. System message in announcements channel (if group has it enabled)
+    if (group.badge_announcements_enabled && channelResult.data) {
+      await svc.from('messages').insert({
+        channel_id: channelResult.data.id,
+        sender_id: promo.userId,
+        content: `${name} just reached ${promo.newTier} tier!`,
+        content_type: 'system',
+      })
+    }
   }
 }

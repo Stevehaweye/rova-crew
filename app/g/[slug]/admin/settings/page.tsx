@@ -89,7 +89,7 @@ export default async function SettingsPage({
   const serviceClient = createServiceClient()
   const { data: groupFeeData } = await serviceClient
     .from('groups')
-    .select('membership_fee_enabled, membership_fee_pence, allow_dm')
+    .select('membership_fee_enabled, membership_fee_pence, allow_dm, tier_theme, badge_announcements_enabled')
     .eq('id', group.id)
     .single()
 
@@ -116,6 +116,8 @@ export default async function SettingsPage({
         feePence: groupFeeData?.membership_fee_pence ?? null,
       }}
       dmEnabled={groupFeeData?.allow_dm ?? true}
+      tierTheme={groupFeeData?.tier_theme ?? 'generic'}
+      badgeAnnouncementsEnabled={groupFeeData?.badge_announcements_enabled ?? true}
     />
   )
 }

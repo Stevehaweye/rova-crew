@@ -28,6 +28,7 @@ const NOTIFICATION_TYPE_TO_PREF: Record<string, string> = {
   event_chat: 'event_chat',
   announcement: 'announcements',
   rsvp_milestone: 'rsvp_milestones',
+  tier_promotion: 'tier_promotions',
 }
 
 /**
