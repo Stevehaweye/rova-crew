@@ -58,6 +58,9 @@ export default async function EventPage({
     data: { user },
   } = await supabase.auth.getUser()
 
+  // Use service client for data queries to bypass RLS
+  const svc = createServiceClient()
+
   // Parallel fetches: RSVP counts, initial RSVPs, guest RSVPs, user's RSVP, user profile
   const [
     goingCountResult,
@@ -71,35 +74,35 @@ export default async function EventPage({
     organiserResult,
   ] = await Promise.all([
     // Member RSVP count — going
-    supabase
+    svc
       .from('rsvps')
       .select('*', { count: 'exact', head: true })
       .eq('event_id', id)
       .eq('status', 'going'),
 
     // Member RSVP count — maybe
-    supabase
+    svc
       .from('rsvps')
       .select('*', { count: 'exact', head: true })
       .eq('event_id', id)
       .eq('status', 'maybe'),
 
     // Member RSVP count — not_going
-    supabase
+    svc
       .from('rsvps')
       .select('*', { count: 'exact', head: true })
       .eq('event_id', id)
       .eq('status', 'not_going'),
 
     // Guest RSVP count (confirmed)
-    supabase
+    svc
       .from('guest_rsvps')
       .select('*', { count: 'exact', head: true })
       .eq('event_id', id)
       .eq('status', 'confirmed'),
 
     // Member RSVPs with profiles (limit 20)
-    supabase
+    svc
       .from('rsvps')
       .select('id, user_id, status, created_at, profiles ( full_name, avatar_url )')
       .eq('event_id', id)
@@ -108,7 +111,7 @@ export default async function EventPage({
       .limit(20),
 
     // Guest RSVPs (limit 20)
-    supabase
+    svc
       .from('guest_rsvps')
       .select('id, first_name, last_name, email, status, created_at')
       .eq('event_id', id)
@@ -118,7 +121,7 @@ export default async function EventPage({
 
     // Current user's RSVP (if logged in)
     user
-      ? supabase
+      ? svc
           .from('rsvps')
           .select('id, status')
           .eq('event_id', id)
@@ -128,7 +131,7 @@ export default async function EventPage({
 
     // Current user's profile (if logged in)
     user
-      ? supabase
+      ? svc
           .from('profiles')
           .select('full_name, avatar_url')
           .eq('id', user.id)
@@ -136,7 +139,7 @@ export default async function EventPage({
       : Promise.resolve({ data: null }),
 
     // Event organiser profile
-    supabase
+    svc
       .from('profiles')
       .select('full_name, avatar_url')
       .eq('id', event.created_by)
@@ -149,7 +152,7 @@ export default async function EventPage({
   const guestGoingCount = guestRsvpCount.count ?? 0
 
   // ── Event Chat data ──────────────────────────────────────────────────────
-  const serviceClient = createServiceClient()
+  const serviceClient = svc
 
   // Fetch (or create) event_chat channel
   let chatChannelId: string | null = null
