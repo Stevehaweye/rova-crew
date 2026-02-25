@@ -56,6 +56,13 @@ export async function POST(
     if (typeof body.badge_announcements_enabled === 'boolean') {
       updates.badge_announcements_enabled = body.badge_announcements_enabled
     }
+    if (typeof body.board_monthly_enabled === 'boolean') updates.board_monthly_enabled = body.board_monthly_enabled
+    if (typeof body.board_alltime_enabled === 'boolean') updates.board_alltime_enabled = body.board_alltime_enabled
+    if (typeof body.board_spirit_enabled === 'boolean') updates.board_spirit_enabled = body.board_spirit_enabled
+    if (typeof body.board_streak_enabled === 'boolean') updates.board_streak_enabled = body.board_streak_enabled
+    if (typeof body.crew_score_visible === 'boolean') updates.crew_score_visible = body.crew_score_visible
+    if (typeof body.hall_of_fame_visibility === 'string') updates.hall_of_fame_visibility = body.hall_of_fame_visibility
+    if (Array.isArray(body.custom_tier_names)) updates.custom_tier_names = body.custom_tier_names
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'No valid fields provided' }, { status: 400 })

@@ -342,7 +342,7 @@ const NAV_ITEMS = [
   { icon: '📣', label: 'Announcements',  key: 'announcements', available: true  },
   { icon: '💬', label: 'Chat',           key: 'chat',          available: true  },
   { icon: '📢', label: 'Blast',          key: 'blast',         available: true  },
-  { icon: '🏆', label: 'Hall of Fame',   key: 'hof',           available: false },
+  { icon: '🏆', label: 'Gamification',   key: 'gamification',  available: true  },
   { icon: '⚙️', label: 'Settings',       key: 'settings',      available: true  },
 ]
 
@@ -352,6 +352,7 @@ const NAV_ROUTES: Record<string, (slug: string) => string> = {
   announcements: (slug) => `/g/${slug}/admin/announcements`,
   chat: (slug) => `/g/${slug}/chat`,
   blast: (slug) => `/g/${slug}/admin/blast`,
+  gamification: (slug) => `/g/${slug}/admin/gamification`,
   settings: (slug) => `/g/${slug}/admin/settings`,
 }
 
