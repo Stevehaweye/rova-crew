@@ -273,9 +273,9 @@ async function sendPostEventReminder(
   await Promise.allSettled(
     rsvps.map((rsvp) =>
       sendPushToUser(rsvp.user_id, {
-        title: `Thanks for coming to ${event.title}!`,
-        body: `Hope you had a great time. See you at the next one!`,
-        url: eventUrl,
+        title: `How was ${event.title}? 🌟`,
+        body: `Rate the event and upload your photos — takes 30 seconds.`,
+        url: `/events/${event.id}/rate`,
       }, 'event_reminder').catch((err) => console.error('[reminders] push error:', err))
     )
   )
