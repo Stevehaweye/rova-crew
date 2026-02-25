@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react'
 import QRCode from 'qrcode'
 import { format } from 'date-fns'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
+import { getMemberTier } from '@/lib/tier-themes'
+import { TierBadge } from '@/components/gamification/TierBadge'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -16,16 +19,26 @@ interface UpcomingEvent {
   groupColour: string
 }
 
+interface GroupCardData {
+  id: string
+  name: string
+  slug: string
+  logoUrl: string | null
+  colour: string
+  tierLevel: 1 | 2 | 3 | 4 | 5
+  tierName: string
+  tierTheme: string
+  customTierNames: string[] | null
+  crewScore: number
+  recentBadge: { emoji: string; name: string } | null
+  memberSince: string | null
+}
+
 interface Props {
   userId: string
   fullName: string
   avatarUrl: string | null
-  groupName: string
-  groupSlug: string
-  groupLogoUrl: string | null
-  colour: string
-  tier: { label: string; colour: string }
-  memberSince: string | null
+  groups: GroupCardData[]
   appUrl: string
   upcomingEvents: UpcomingEvent[]
 }
@@ -41,12 +54,21 @@ function initials(name: string) {
     .toUpperCase()
 }
 
-function darken(hex: string, amount = 0.25): string {
-  const c = hex.replace('#', '')
-  const r = Math.round(parseInt(c.substring(0, 2), 16) * (1 - amount))
-  const g = Math.round(parseInt(c.substring(2, 4), 16) * (1 - amount))
-  const b = Math.round(parseInt(c.substring(4, 6), 16) * (1 - amount))
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+// ─── Tier background styles ─────────────────────────────────────────────────
+
+function getTierCardStyle(tierLevel: number): { background: string; ring?: string } {
+  switch (tierLevel) {
+    case 2:
+      return { background: 'linear-gradient(145deg, #92400E 0%, #78350F 100%)' }
+    case 3:
+      return { background: 'linear-gradient(145deg, #334155 0%, #1E293B 100%)', ring: 'ring-2 ring-slate-400/40' }
+    case 4:
+      return { background: 'linear-gradient(145deg, #334155 0%, #1E293B 100%)', ring: 'ring-2 ring-yellow-500/60' }
+    case 5:
+      return { background: 'linear-gradient(145deg, #334155 0%, #1E293B 100%)' }
+    default: // T1
+      return { background: 'linear-gradient(145deg, #334155 0%, #1E293B 100%)' }
+  }
 }
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
@@ -82,19 +104,18 @@ export default function CrewCardClient({
   userId,
   fullName,
   avatarUrl,
-  groupName,
-  groupSlug,
-  groupLogoUrl,
-  colour,
-  tier,
-  memberSince,
+  groups: initialGroups,
   appUrl,
   upcomingEvents,
 }: Props) {
+  const [activeGroupIdx, setActiveGroupIdx] = useState(0)
+  const [groupData, setGroupData] = useState(initialGroups)
   const [selectedEventId, setSelectedEventId] = useState<string | null>(
     upcomingEvents[0]?.id ?? null
   )
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
+
+  const activeGroup = groupData[activeGroupIdx]
 
   // Generate QR code whenever selection changes
   useEffect(() => {
@@ -112,123 +133,215 @@ export default function CrewCardClient({
       .catch((err) => console.error('[wallet] QR generation error:', err))
   }, [selectedEventId, userId, appUrl])
 
+  // Supabase Realtime subscription for member_stats changes
+  useEffect(() => {
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`crew-card-${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'member_stats',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          const row = payload.new as { crew_score: number; group_id: string }
+          setGroupData((prev) =>
+            prev.map((g) => {
+              if (g.id !== row.group_id) return g
+              const tierInfo = getMemberTier(row.crew_score, g.tierTheme, g.customTierNames)
+              return {
+                ...g,
+                crewScore: row.crew_score,
+                tierLevel: tierInfo.level as 1 | 2 | 3 | 4 | 5,
+                tierName: tierInfo.tier,
+              }
+            })
+          )
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [userId])
+
   const selectedEvent = upcomingEvents.find((e) => e.id === selectedEventId)
-  const darkColour = darken(colour)
+  const tierStyle = getTierCardStyle(activeGroup.tierLevel)
+  const isT5 = activeGroup.tierLevel === 5
 
-  return (
-    <div className="space-y-6">
-      {/* ── Crew Card ──────────────────────────────────────────── */}
+  // Card inner content
+  const cardInner = (
+    <div
+      className={`relative rounded-3xl overflow-hidden shadow-2xl ${tierStyle.ring ?? ''}`}
+      style={{ background: tierStyle.background }}
+    >
+      {/* Decorative pattern */}
       <div
-        className="relative rounded-3xl overflow-hidden shadow-2xl"
+        className="absolute inset-0 opacity-[0.06] pointer-events-none"
         style={{
-          background: `linear-gradient(145deg, ${colour} 0%, ${darkColour} 100%)`,
+          backgroundImage: 'radial-gradient(rgba(255,255,255,0.8) 1px, transparent 1px)',
+          backgroundSize: '20px 20px',
         }}
-      >
-        {/* Decorative pattern */}
-        <div
-          className="absolute inset-0 opacity-[0.06] pointer-events-none"
-          style={{
-            backgroundImage: 'radial-gradient(rgba(255,255,255,0.8) 1px, transparent 1px)',
-            backgroundSize: '20px 20px',
-          }}
-        />
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background: 'linear-gradient(180deg, rgba(255,255,255,0.1) 0%, transparent 40%, rgba(0,0,0,0.15) 100%)',
-          }}
-        />
+      />
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: 'linear-gradient(180deg, rgba(255,255,255,0.1) 0%, transparent 40%, rgba(0,0,0,0.15) 100%)',
+        }}
+      />
 
-        <div className="relative z-10 px-6 pt-5 pb-6">
-          {/* Header row: wordmark + group */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="select-none">
-              <span className="text-sm font-black tracking-[0.18em] text-white/90">ROVA</span>
-              <span className="text-sm font-black tracking-[0.18em]" style={{ color: '#C9982A' }}>CREW</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div
-                className="w-6 h-6 rounded-md flex items-center justify-center overflow-hidden ring-1 ring-white/20"
-                style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
-              >
-                {groupLogoUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={groupLogoUrl} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-[9px] font-bold text-white/80">
-                    {groupName[0]?.toUpperCase()}
-                  </span>
-                )}
-              </div>
-              <span className="text-xs font-semibold text-white/60">{groupName}</span>
-            </div>
+      <div className="relative z-10 px-6 pt-5 pb-6">
+        {/* Header row: wordmark + group */}
+        <div className="flex items-center justify-between mb-5">
+          <div className="select-none">
+            <span className="text-sm font-black tracking-[0.18em] text-white/90">ROVA</span>
+            <span className="text-sm font-black tracking-[0.18em]" style={{ color: '#C9982A' }}>CREW</span>
           </div>
-
-          {/* Member identity row */}
-          <div className="flex items-start gap-4 mb-6">
-            <div className="flex-1 min-w-0">
-              <h1 className="text-2xl font-black text-white leading-tight tracking-tight truncate">
-                {fullName}
-              </h1>
-              <div className="flex items-center gap-2 mt-1.5">
-                <span
-                  className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider"
-                  style={{
-                    backgroundColor: tier.colour + '30',
-                    color: tier.colour === '#6B7280' ? 'rgba(255,255,255,0.7)' : tier.colour,
-                    border: `1px solid ${tier.colour}40`,
-                  }}
-                >
-                  {tier.label}
-                </span>
-                {memberSince && (
-                  <span className="text-[11px] text-white/40 font-medium">
-                    Since {memberSince}
-                  </span>
-                )}
-              </div>
-            </div>
+          <div className="flex items-center gap-2">
             <div
-              className="w-14 h-14 rounded-full flex-shrink-0 overflow-hidden ring-2 ring-white/25 flex items-center justify-center"
+              className="w-6 h-6 rounded-md flex items-center justify-center overflow-hidden ring-1 ring-white/20"
               style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
             >
-              {avatarUrl ? (
+              {activeGroup.logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+                <img src={activeGroup.logoUrl} alt="" className="w-full h-full object-cover" />
               ) : (
-                <span className="text-lg font-bold text-white/70">
-                  {initials(fullName)}
+                <span className="text-[9px] font-bold text-white/80">
+                  {activeGroup.name[0]?.toUpperCase()}
                 </span>
               )}
             </div>
-          </div>
-
-          {/* QR code area */}
-          <div className="flex flex-col items-center">
-            <div className="bg-white rounded-2xl p-3 shadow-lg">
-              {qrDataUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={qrDataUrl}
-                  alt="Check-in QR code"
-                  className="w-48 h-48 sm:w-56 sm:h-56"
-                  style={{ imageRendering: 'pixelated' }}
-                />
-              ) : (
-                <div className="w-48 h-48 sm:w-56 sm:h-56 bg-gray-50 rounded-xl animate-pulse" />
-              )}
-            </div>
-            <p className="text-[11px] text-white/50 font-medium mt-3 text-center tracking-wide">
-              {selectedEvent
-                ? `Check-in for ${selectedEvent.title}`
-                : 'Show this screen to check in'}
-            </p>
+            <span className="text-xs font-semibold text-white/60">{activeGroup.name}</span>
           </div>
         </div>
 
-        {/* Bottom edge accent */}
-        <div className="h-1.5" style={{ background: `linear-gradient(90deg, #C9982A, ${colour}, #C9982A)` }} />
+        {/* Member identity row */}
+        <div className="flex items-start gap-4 mb-4">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-2xl font-black text-white leading-tight tracking-tight truncate">
+              {fullName}
+            </h1>
+            {activeGroup.memberSince && (
+              <p className="text-[11px] text-white/40 font-medium mt-1">
+                Since {activeGroup.memberSince}
+              </p>
+            )}
+          </div>
+          <div
+            className="w-14 h-14 rounded-full flex-shrink-0 overflow-hidden ring-2 ring-white/25 flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}
+          >
+            {avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-lg font-bold text-white/70">
+                {initials(fullName)}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Gamification row */}
+        <div className="flex items-center justify-between mb-5 gap-3">
+          {/* Tier badge */}
+          <TierBadge
+            tierLevel={activeGroup.tierLevel}
+            tierName={activeGroup.tierName}
+            size="sm"
+          />
+
+          {/* Crew Score */}
+          <div className="flex items-baseline gap-1">
+            <span className="text-2xl font-black text-white tabular-nums">
+              {activeGroup.crewScore}
+            </span>
+            <span className="text-xs font-medium text-white/40">/ 1,000</span>
+          </div>
+
+          {/* Recent badge */}
+          {activeGroup.recentBadge ? (
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-base">{activeGroup.recentBadge.emoji}</span>
+              <span className="text-[10px] font-medium text-white/50 truncate max-w-[80px]">
+                {activeGroup.recentBadge.name}
+              </span>
+            </div>
+          ) : (
+            <div />
+          )}
+        </div>
+
+        {/* QR code area */}
+        <div className="flex flex-col items-center">
+          <div className="bg-white rounded-2xl p-3 shadow-lg">
+            {qrDataUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={qrDataUrl}
+                alt="Check-in QR code"
+                className="w-48 h-48 sm:w-56 sm:h-56"
+                style={{ imageRendering: 'pixelated' }}
+              />
+            ) : (
+              <div className="w-48 h-48 sm:w-56 sm:h-56 bg-gray-50 rounded-xl animate-pulse" />
+            )}
+          </div>
+          <p className="text-[11px] text-white/50 font-medium mt-3 text-center tracking-wide">
+            {selectedEvent
+              ? `Check-in for ${selectedEvent.title}`
+              : 'Show this screen to check in'}
+          </p>
+        </div>
       </div>
+
+      {/* Bottom edge accent */}
+      <div className="h-1.5" style={{ background: `linear-gradient(90deg, #C9982A, ${activeGroup.colour}, #C9982A)` }} />
+    </div>
+  )
+
+  return (
+    <div className="space-y-6">
+      {/* ── Group Selector ──────────────────────────────────────── */}
+      {groupData.length > 1 && (
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+          {groupData.map((g, idx) => {
+            const isActive = idx === activeGroupIdx
+            return (
+              <button
+                key={g.id}
+                onClick={() => setActiveGroupIdx(idx)}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all duration-200 shrink-0 ${
+                  isActive
+                    ? 'text-white shadow-md'
+                    : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                }`}
+                style={isActive ? { backgroundColor: g.colour } : undefined}
+              >
+                <div
+                  className={`w-2.5 h-2.5 rounded-full shrink-0 ${isActive ? 'ring-1 ring-white/40' : ''}`}
+                  style={{ backgroundColor: isActive ? 'rgba(255,255,255,0.5)' : g.colour }}
+                />
+                {g.name}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* ── Crew Card ──────────────────────────────────────────── */}
+      {isT5 ? (
+        /* T5 iridescent border wrapper */
+        <div className="bg-gradient-to-r from-purple-400 via-blue-400 to-teal-400 bg-[length:200%_100%] animate-shimmer p-[2px] rounded-3xl shadow-2xl">
+          {cardInner}
+        </div>
+      ) : (
+        cardInner
+      )}
 
       {/* ── Upcoming Events ────────────────────────────────────── */}
       {upcomingEvents.length > 0 ? (
@@ -245,9 +358,9 @@ export default function CrewCardClient({
                   onClick={() => setSelectedEventId(ev.id)}
                   className="w-full text-left bg-white rounded-2xl border-2 p-4 transition-all duration-200"
                   style={{
-                    borderColor: isSelected ? colour : '#F3F4F6',
+                    borderColor: isSelected ? activeGroup.colour : '#F3F4F6',
                     boxShadow: isSelected
-                      ? `0 0 0 1px ${colour}20, 0 4px 12px ${colour}15`
+                      ? `0 0 0 1px ${activeGroup.colour}20, 0 4px 12px ${activeGroup.colour}15`
                       : '0 1px 3px rgba(0,0,0,0.04)',
                   }}
                 >
@@ -255,7 +368,7 @@ export default function CrewCardClient({
                     {/* Date badge */}
                     <div
                       className="flex-shrink-0 w-11 h-11 rounded-xl flex flex-col items-center justify-center text-white"
-                      style={{ backgroundColor: isSelected ? colour : ev.groupColour }}
+                      style={{ backgroundColor: isSelected ? activeGroup.colour : ev.groupColour }}
                     >
                       <span className="text-[8px] font-bold uppercase leading-none">
                         {format(start, 'MMM')}
@@ -270,7 +383,7 @@ export default function CrewCardClient({
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold text-gray-900 truncate">{ev.title}</p>
                         {isSelected && (
-                          <span style={{ color: colour }}>
+                          <span style={{ color: activeGroup.colour }}>
                             <CheckCircleIcon />
                           </span>
                         )}
@@ -293,7 +406,7 @@ export default function CrewCardClient({
                   {isSelected && (
                     <div
                       className="mt-3 pt-3 border-t flex items-center gap-1.5 text-xs font-semibold"
-                      style={{ borderColor: colour + '20', color: colour }}
+                      style={{ borderColor: activeGroup.colour + '20', color: activeGroup.colour }}
                     >
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0 1 3.75 9.375v-4.5ZM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 0 1-1.125-1.125v-4.5ZM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 0 1-1.125-1.125v-4.5ZM13.5 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 0 1-1.125-1.125v-4.5Z" />
@@ -314,9 +427,9 @@ export default function CrewCardClient({
             RSVP to an event to get your check-in QR code.
           </p>
           <Link
-            href={`/g/${groupSlug}`}
+            href={`/g/${activeGroup.slug}`}
             className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-white text-sm font-bold transition-opacity hover:opacity-90"
-            style={{ backgroundColor: colour }}
+            style={{ backgroundColor: activeGroup.colour }}
           >
             Browse events &rarr;
           </Link>

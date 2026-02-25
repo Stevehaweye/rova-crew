@@ -1,15 +1,9 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
+import { getMemberTier } from '@/lib/tier-themes'
 import CrewCardClient from './crew-card-client'
 import Link from 'next/link'
-
-// ─── Tier Logic ──────────────────────────────────────────────────────────────
-
-function getTier(goingCount: number): { label: string; colour: string } {
-  if (goingCount >= 10) return { label: 'Dedicated', colour: '#C9982A' }
-  if (goingCount >= 3) return { label: 'Regular', colour: '#0D7377' }
-  return { label: 'New Member', colour: '#6B7280' }
-}
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
@@ -22,31 +16,22 @@ export default async function WalletPage() {
 
   if (!user) redirect('/auth?next=/wallet')
 
-  // Parallel fetches
   const now = new Date().toISOString()
+  const svc = createServiceClient()
 
-  const [profileResult, membershipsResult, rsvpCountResult] = await Promise.all([
-    // Profile
+  const [profileResult, membershipsResult] = await Promise.all([
     supabase
       .from('profiles')
       .select('full_name, avatar_url')
       .eq('id', user.id)
       .single(),
 
-    // Group memberships with group data
     supabase
       .from('group_members')
-      .select('group_id, role, joined_at, groups ( id, name, slug, logo_url, primary_colour )')
+      .select('group_id, role, joined_at, groups ( id, name, slug, logo_url, primary_colour, tier_theme, custom_tier_names )')
       .eq('user_id', user.id)
       .eq('status', 'approved')
       .order('joined_at', { ascending: true }),
-
-    // Total "going" RSVPs (for tier)
-    supabase
-      .from('rsvps')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', user.id)
-      .eq('status', 'going'),
   ])
 
   const profile = profileResult.data ?? {
@@ -55,35 +40,99 @@ export default async function WalletPage() {
   }
 
   const memberships = membershipsResult.data ?? []
-  const primaryGroup = memberships[0]?.groups as unknown as {
-    id: string
-    name: string
-    slug: string
-    logo_url: string | null
-    primary_colour: string
-  } | null
 
-  if (!primaryGroup) {
-    // No group memberships — redirect to home
+  if (memberships.length === 0) {
     redirect('/home')
   }
 
-  const goingCount = rsvpCountResult.count ?? 0
-  const tier = getTier(goingCount)
-  const memberSince = memberships[0]?.joined_at
-    ? new Date(memberships[0].joined_at).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
-    : null
+  // Fetch gamification data for all groups in parallel
+  const groupIds = memberships.map((m) => m.group_id)
 
-  // Fetch upcoming events user has RSVP'd "going" to
-  const { data: upcomingRsvps } = await supabase
-    .from('rsvps')
-    .select('event_id, status, events ( id, title, starts_at, ends_at, location, cover_url, group_id, groups ( name, primary_colour ) )')
-    .eq('user_id', user.id)
-    .eq('status', 'going')
-    .order('created_at', { ascending: false })
+  const [statsResult, badgesResult, upcomingRsvpsResult] = await Promise.all([
+    // Member stats across all groups
+    svc
+      .from('member_stats')
+      .select('group_id, crew_score, tier')
+      .eq('user_id', user.id)
+      .in('group_id', groupIds),
 
-  // Filter to future events and sort by date
-  const upcomingEvents = (upcomingRsvps ?? [])
+    // Most recent badge award per group
+    svc
+      .from('badge_awards')
+      .select('group_id, awarded_at, badges ( emoji, name )')
+      .eq('user_id', user.id)
+      .in('group_id', groupIds)
+      .order('awarded_at', { ascending: false }),
+
+    // Upcoming RSVPs
+    supabase
+      .from('rsvps')
+      .select('event_id, status, events ( id, title, starts_at, ends_at, location, cover_url, group_id, groups ( name, primary_colour ) )')
+      .eq('user_id', user.id)
+      .eq('status', 'going')
+      .order('created_at', { ascending: false }),
+  ])
+
+  // Build stats map: group_id -> { crew_score }
+  const statsMap = new Map<string, { crew_score: number }>()
+  for (const row of statsResult.data ?? []) {
+    statsMap.set(row.group_id, { crew_score: row.crew_score ?? 0 })
+  }
+
+  // Build recent badge map: group_id -> { emoji, name } (first match = most recent)
+  const badgeMap = new Map<string, { emoji: string; name: string }>()
+  for (const row of badgesResult.data ?? []) {
+    if (!badgeMap.has(row.group_id)) {
+      const badge = row.badges as unknown as { emoji: string; name: string } | null
+      if (badge) {
+        badgeMap.set(row.group_id, { emoji: badge.emoji, name: badge.name })
+      }
+    }
+  }
+
+  // Build per-group card data
+  const groups = memberships.map((m) => {
+    const g = m.groups as unknown as {
+      id: string
+      name: string
+      slug: string
+      logo_url: string | null
+      primary_colour: string
+      tier_theme: string | null
+      custom_tier_names: string[] | null
+    }
+
+    const colour = g.primary_colour?.startsWith('#')
+      ? g.primary_colour
+      : `#${g.primary_colour ?? '0D7377'}`
+
+    const stats = statsMap.get(g.id)
+    const crewScore = stats?.crew_score ?? 0
+    const tierInfo = getMemberTier(crewScore, g.tier_theme ?? undefined, g.custom_tier_names)
+    const recentBadge = badgeMap.get(g.id) ?? null
+
+    const memberSince = m.joined_at
+      ? new Date(m.joined_at).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+      : null
+
+    return {
+      id: g.id,
+      name: g.name,
+      slug: g.slug,
+      logoUrl: g.logo_url,
+      colour,
+      tierLevel: tierInfo.level as 1 | 2 | 3 | 4 | 5,
+      tierName: tierInfo.tier,
+      tierTheme: g.tier_theme ?? 'generic',
+      customTierNames: g.custom_tier_names ?? null,
+      crewScore,
+      recentBadge,
+      memberSince,
+    }
+  })
+
+  // Filter upcoming events
+  const upcomingEvents = (upcomingRsvpsResult.data ?? [])
     .map((r) => {
       const ev = r.events as unknown as {
         id: string
@@ -102,10 +151,6 @@ export default async function WalletPage() {
     .slice(0, 5)
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-
-  const colour = primaryGroup.primary_colour.startsWith('#')
-    ? primaryGroup.primary_colour
-    : `#${primaryGroup.primary_colour}`
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -134,25 +179,23 @@ export default async function WalletPage() {
           userId={user.id}
           fullName={profile.full_name}
           avatarUrl={profile.avatar_url}
-          groupName={primaryGroup.name}
-          groupSlug={primaryGroup.slug}
-          groupLogoUrl={primaryGroup.logo_url}
-          colour={colour}
-          tier={tier}
-          memberSince={memberSince}
+          groups={groups}
           appUrl={appUrl}
-          upcomingEvents={upcomingEvents.map((ev) => ({
-            id: ev.id,
-            title: ev.title,
-            startsAt: ev.starts_at,
-            location: ev.location,
-            groupName: ev.groups?.name ?? primaryGroup.name,
-            groupColour: ev.groups?.primary_colour
+          upcomingEvents={upcomingEvents.map((ev) => {
+            const evColour = ev.groups?.primary_colour
               ? ev.groups.primary_colour.startsWith('#')
                 ? ev.groups.primary_colour
                 : `#${ev.groups.primary_colour}`
-              : colour,
-          }))}
+              : groups[0].colour
+            return {
+              id: ev.id,
+              title: ev.title,
+              startsAt: ev.starts_at,
+              location: ev.location,
+              groupName: ev.groups?.name ?? groups[0].name,
+              groupColour: evColour,
+            }
+          })}
         />
       </main>
     </div>
