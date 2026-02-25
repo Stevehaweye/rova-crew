@@ -6,6 +6,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { sendRsvpConfirmationEmail, sendWaitlistEmail } from '@/lib/email'
 import { sendPushToUser } from '@/lib/push-sender'
 import { checkRsvpMilestone } from '@/lib/rsvp-milestones'
+import { awardSpiritPoints } from '@/lib/spirit-points'
 
 export async function POST(
   request: NextRequest,
@@ -115,6 +116,12 @@ export async function POST(
             evtData.max_capacity,
             user.id
           ).catch((err) => console.error('[rsvp] milestone check error:', err))
+
+          // First RSVP spirit points — award if this user is the only one going
+          if (currentGoingCount === 1) {
+            awardSpiritPoints(user.id, evtData.group_id, 'first_rsvp', eventId)
+              .catch((err) => console.error('[rsvp] spirit points error:', err))
+          }
         }
       }
     }

@@ -185,6 +185,10 @@ export function JoinCard({
         )
       setLocalCount((c) => c + 1)
       setStatus('joined')
+
+      // Fire-and-forget: check if this member was a guest who converted
+      fetch(`/api/groups/${groupSlug}/check-guest-conversion`, { method: 'POST' })
+        .catch(() => {})
     } else {
       setStatus('pending')
     }

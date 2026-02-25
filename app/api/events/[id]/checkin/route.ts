@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { awardSpiritPoints } from '@/lib/spirit-points'
+import { recalculateGroupCrewScores } from '@/lib/crew-score'
 
 // ─── POST: Check in a member or guest ────────────────────────────────────────
 
@@ -97,6 +99,14 @@ export async function POST(
         console.error('[checkin] rsvp update error:', updateErr)
         return NextResponse.json({ success: false, error: 'Check-in failed.' }, { status: 500 })
       }
+
+      // Award spirit points for attendance (fire-and-forget)
+      awardSpiritPoints(user_id, event.group_id, 'event_attendance', eventId)
+        .catch((err) => console.error('[checkin] spirit points error:', err))
+
+      // Recalculate group crew scores (fire-and-forget)
+      recalculateGroupCrewScores(event.group_id)
+        .catch((err) => console.error('[checkin] crew score recalc error:', err))
 
       const profile = rsvp.profiles as unknown as { full_name: string; avatar_url: string | null }
 
