@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { awardSpiritPoints } from '@/lib/spirit-points'
 import { recalculateGroupCrewScores } from '@/lib/crew-score'
 import { checkAndAwardBadges } from '@/lib/badges'
+import { updateStreakOnCheckIn } from '@/lib/streaks'
 
 // ─── POST: Check in a member or guest ────────────────────────────────────────
 
@@ -112,6 +113,10 @@ export async function POST(
       // Check and award badges (fire-and-forget)
       checkAndAwardBadges(user_id, event.group_id)
         .catch((err) => console.error('[checkin] badge check error:', err))
+
+      // Update attendance streak (fire-and-forget)
+      updateStreakOnCheckIn(user_id, event.group_id, eventId)
+        .catch((err) => console.error('[checkin] streak update error:', err))
 
       const profile = rsvp.profiles as unknown as { full_name: string; avatar_url: string | null }
 

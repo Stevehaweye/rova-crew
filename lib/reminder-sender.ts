@@ -2,6 +2,7 @@ import { format } from 'date-fns'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendPushToUser } from '@/lib/push-sender'
 import { sendReminderEmail } from '@/lib/email'
+import { checkStreakBreaks } from '@/lib/streaks'
 
 interface JobResult {
   jobId: string
@@ -258,7 +259,7 @@ async function send2hReminder(
 
 async function sendPostEventReminder(
   supabase: ReturnType<typeof createServiceClient>,
-  event: { id: string; title: string },
+  event: { id: string; title: string; group_id: string },
   eventUrl: string
 ): Promise<number> {
   const { data: rsvps } = await supabase
@@ -278,6 +279,10 @@ async function sendPostEventReminder(
       }, 'event_reminder').catch((err) => console.error('[reminders] push error:', err))
     )
   )
+
+  // Check for streak breaks (fire-and-forget)
+  checkStreakBreaks(event.id, event.group_id)
+    .catch((err) => console.error('[reminders] streak break check error:', err))
 
   return rsvps.length
 }
