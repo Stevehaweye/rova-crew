@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -16,6 +17,12 @@ interface EventRow {
   event_type: string | null
   price_amount: number | null
   total_cost: number | null
+}
+
+interface PastEventStats {
+  attended: number
+  avgRating: number | null
+  photoCount: number
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -97,6 +104,53 @@ export default async function AdminEventsPage({
     }
     for (const r of guestRsvps.data ?? []) {
       rsvpCounts[r.event_id] = (rsvpCounts[r.event_id] ?? 0) + 1
+    }
+  }
+
+  // Fetch report stats for past events
+  const pastStats: Record<string, PastEventStats> = {}
+  if (activeTab === 'past' && eventRows.length > 0) {
+    const svc = createServiceClient()
+    const pastIds = eventRows.map((e) => e.id)
+
+    const [checkedInResult, ratingsResult, photosResult] = await Promise.all([
+      svc
+        .from('rsvps')
+        .select('event_id')
+        .in('event_id', pastIds)
+        .not('checked_in_at', 'is', null),
+      svc
+        .from('event_ratings')
+        .select('event_id, rating')
+        .in('event_id', pastIds),
+      svc
+        .from('event_photos')
+        .select('event_id')
+        .in('event_id', pastIds)
+        .eq('is_hidden', false),
+    ])
+
+    // Count attended per event
+    for (const r of checkedInResult.data ?? []) {
+      if (!pastStats[r.event_id]) pastStats[r.event_id] = { attended: 0, avgRating: null, photoCount: 0 }
+      pastStats[r.event_id].attended++
+    }
+
+    // Avg rating per event
+    const ratingsByEvent: Record<string, number[]> = {}
+    for (const r of ratingsResult.data ?? []) {
+      if (!ratingsByEvent[r.event_id]) ratingsByEvent[r.event_id] = []
+      ratingsByEvent[r.event_id].push(r.rating)
+    }
+    for (const [eid, ratings] of Object.entries(ratingsByEvent)) {
+      if (!pastStats[eid]) pastStats[eid] = { attended: 0, avgRating: null, photoCount: 0 }
+      pastStats[eid].avgRating = Math.round((ratings.reduce((s, r) => s + r, 0) / ratings.length) * 10) / 10
+    }
+
+    // Photo count per event
+    for (const r of photosResult.data ?? []) {
+      if (!pastStats[r.event_id]) pastStats[r.event_id] = { attended: 0, avgRating: null, photoCount: 0 }
+      pastStats[r.event_id].photoCount++
     }
   }
 
@@ -247,6 +301,17 @@ export default async function AdminEventsPage({
                       <p className="text-xs text-gray-400 mt-0.5 truncate">
                         {ev.location ?? 'No location'}
                       </p>
+                      {isPast && pastStats[ev.id] && (
+                        <p className="text-[10px] text-gray-400 mt-0.5">
+                          {pastStats[ev.id].attended} attended
+                          {pastStats[ev.id].avgRating !== null && (
+                            <> · {pastStats[ev.id].avgRating}★</>
+                          )}
+                          {pastStats[ev.id].photoCount > 0 && (
+                            <> · {pastStats[ev.id].photoCount} photos</>
+                          )}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -285,9 +350,13 @@ export default async function AdminEventsPage({
                       </Link>
                     )}
                     {isPast && (
-                      <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-400 px-2 py-1 rounded-full">
-                        Ended
-                      </span>
+                      <Link
+                        href={`/g/${group.slug}/admin/events/${ev.id}/report`}
+                        className="text-xs font-semibold px-2.5 py-1.5 rounded-lg text-white transition-opacity hover:opacity-90"
+                        style={{ backgroundColor: colour }}
+                      >
+                        📊 Report
+                      </Link>
                     )}
                   </div>
                 </div>
