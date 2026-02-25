@@ -55,8 +55,9 @@ export async function POST(
       }
     }
 
-    // Upsert RSVP
-    const { error: upsertErr } = await supabase
+    // Upsert RSVP (use service client to bypass RLS)
+    const svcRsvp = createServiceClient()
+    const { error: upsertErr } = await svcRsvp
       .from('rsvps')
       .upsert(
         { event_id: eventId, user_id: user.id, status: finalStatus },
