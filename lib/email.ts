@@ -1,25 +1,110 @@
 import { Resend } from 'resend'
-import RsvpConfirmationEmail, {
-  type RsvpConfirmationEmailProps,
-} from '@/app/emails/rsvp-confirmation'
+
+export interface RsvpConfirmationEmailProps {
+  recipientName: string
+  eventTitle: string
+  eventDate: string
+  eventTime: string
+  eventLocation: string | null
+  mapsUrl: string | null
+  eventUrl: string
+  groupName: string
+  qrCodeBase64: string
+  paidAmount: string | null
+  isGuest: boolean
+  signUpUrl: string | null
+  stripePaymentId?: string | null
+  stripeReceiptUrl?: string | null
+}
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
 const FROM_EMAIL = 'ROVA Crew <noreply@mypin.global>'
 
-// ─── RSVP Confirmation (React Email) ────────────────────────────────────────
+// ─── RSVP Confirmation ──────────────────────────────────────────────────────
 
 export async function sendRsvpConfirmationEmail(
   to: string,
   props: RsvpConfirmationEmailProps
 ): Promise<{ success: true } | { success: false; error: string }> {
+  const firstName = props.recipientName.split(' ')[0]
+
+  const locationRow = props.eventLocation
+    ? props.mapsUrl
+      ? `<tr>
+          <td style="padding:8px 0;font-size:13px;color:#6b7280;width:100px;vertical-align:top;">Location</td>
+          <td style="padding:8px 0;font-size:14px;font-weight:600;"><a href="${props.mapsUrl}" style="color:#0D7377;text-decoration:none;">${props.eventLocation} &rarr;</a></td>
+        </tr>`
+      : `<tr>
+          <td style="padding:8px 0;font-size:13px;color:#6b7280;width:100px;vertical-align:top;">Location</td>
+          <td style="padding:8px 0;font-size:14px;color:#111827;font-weight:600;">${props.eventLocation}</td>
+        </tr>`
+    : ''
+
+  const paymentRow = props.paidAmount
+    ? `<tr>
+        <td style="padding:8px 0;font-size:13px;color:#6b7280;width:100px;vertical-align:top;">Payment</td>
+        <td style="padding:8px 0;font-size:14px;color:#111827;font-weight:600;">${props.paidAmount} paid${props.stripePaymentId ? ` &middot; Ref: ${props.stripePaymentId.slice(-8).toUpperCase()}` : ''}</td>
+      </tr>`
+    : ''
+
+  const receiptBlock = props.paidAmount && props.stripeReceiptUrl
+    ? `<div style="margin:20px 0;padding:16px 20px;background-color:#F0FDF4;border-radius:12px;text-align:center;">
+        <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#065F46;">Payment Receipt</p>
+        <p style="margin:0 0 12px;font-size:12px;color:#6B7280;">${props.eventTitle} &middot; ${props.paidAmount}</p>
+        <a href="${props.stripeReceiptUrl}" style="font-size:13px;font-weight:700;color:#0D7377;text-decoration:none;">View full receipt &rarr;</a>
+      </div>`
+    : ''
+
+  const qrBlock = props.qrCodeBase64
+    ? `<div style="text-align:center;margin:28px 0 0;">
+        <p style="margin:0 0 4px;font-size:16px;font-weight:800;color:#111827;">Your check-in code</p>
+        <p style="margin:0 0 16px;font-size:13px;color:#9CA3AF;">Show this code at the event entrance</p>
+        <img src="${props.qrCodeBase64}" alt="QR Code" width="200" height="200" style="border-radius:12px;border:2px solid #F3F4F6;" />
+        <p style="margin:16px 0 0;font-size:12px;color:#9CA3AF;line-height:1.5;">
+          Save this email or screenshot the QR code.
+        </p>
+      </div>`
+    : ''
+
+  const ctaBlock = props.isGuest && props.signUpUrl
+    ? `<div style="text-align:center;margin:28px 0 0;">
+        <p style="margin:0 0 4px;font-size:15px;font-weight:700;color:#111827;">Want to see who else is going?</p>
+        <p style="margin:0 0 20px;font-size:13px;color:#4B5563;line-height:1.5;">Join ${props.groupName} to see the attendee list, group chat, and upcoming events.</p>
+        ${ctaButton('Join ' + props.groupName + ' \\u2192', props.signUpUrl)}
+      </div>`
+    : ctaButton('View Event \\u2192', props.eventUrl)
+
+  const content = `
+    <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#111827;line-height:1.3;">
+      You&rsquo;re going to ${props.eventTitle}!
+    </h1>
+    <p style="margin:0 0 20px;font-size:15px;color:#6b7280;line-height:1.6;">
+      Hey ${firstName}, you&rsquo;re confirmed. Here&rsquo;s everything you need.
+    </p>
+
+    ${infoBox([
+      { label: 'Date', value: props.eventDate },
+      { label: 'Time', value: props.eventTime },
+    ])}
+    ${locationRow ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:-16px 0 24px;"><tr><td style="padding:0 24px;">${locationRow}</td></tr></table>` : ''}
+    ${paymentRow ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:-16px 0 24px;"><tr><td style="padding:0 24px;">${paymentRow}</td></tr></table>` : ''}
+
+    ${receiptBlock}
+    ${qrBlock}
+
+    <div style="margin:28px 0 0;">
+      ${ctaBlock}
+    </div>
+  `
+
   try {
     const { error } = await resend.emails.send({
       from: FROM_EMAIL,
       to,
       replyTo: FROM_EMAIL,
       subject: `You're going to ${props.eventTitle}! Here's your check-in code.`,
-      react: RsvpConfirmationEmail(props),
+      html: emailLayout(content),
     })
 
     if (error) {
