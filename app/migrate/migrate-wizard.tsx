@@ -408,45 +408,30 @@ export default function MigrateWizard() {
         }
       }
 
-      // Insert group with migration_source
-      const { data: group, error: groupErr } = await supabase
-        .from('groups')
-        .insert({
+      // Create group via API (service client bypasses RLS)
+      const createRes = await fetch('/api/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           name: state.name.trim(),
           slug,
           tagline: state.tagline.trim() || null,
           description: state.description.trim() || null,
           category: state.category,
           location: state.location.trim() || null,
-          logo_url: logoUrl,
-          primary_colour: state.colour.replace('#', ''),
-          is_public: true,
-          join_approval_required: false,
-          created_by: user.id,
-          migration_source: 'whatsapp',
-        })
-        .select('id, slug')
-        .single()
-
-      if (groupErr) throw groupErr
-
-      // Add creator as super_admin
-      await supabase.from('group_members').insert({
-        group_id: group.id,
-        user_id: user.id,
-        role: 'super_admin',
-        status: 'approved',
+          logoUrl,
+          primaryColour: state.colour,
+          isPublic: true,
+          joinApprovalRequired: false,
+          migrationSource: 'whatsapp',
+        }),
       })
-
-      // Initialize member_stats row
-      await supabase.from('member_stats').insert({
-        user_id: user.id,
-        group_id: group.id,
-      })
+      const createData = await createRes.json()
+      if (!createRes.ok) throw new Error(createData.error || 'Failed to create group')
 
       patch({
-        groupId: group.id,
-        groupSlug: group.slug,
+        groupId: createData.groupId,
+        groupSlug: createData.slug,
         groupName: state.name.trim(),
         slug,
       })

@@ -683,46 +683,31 @@ export default function NewGroupPage() {
         }
       }
 
-      // Insert group
-      const { data: group, error: groupErr } = await supabase
-        .from('groups')
-        .insert({
+      // Create group via API (service client bypasses RLS)
+      const createRes = await fetch('/api/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           name: form.name.trim(),
           slug: form.slug,
           tagline: form.tagline.trim() || null,
           description: form.description.trim() || null,
           category: form.category,
           location: form.location.trim() || null,
-          logo_url: logoUrl,
-          primary_colour: form.colour.replace('#', ''),
-          is_public: form.isPublic,
-          join_approval_required: form.requireApproval,
-          created_by: user.id,
-        })
-        .select('id, slug')
-        .single()
-
-      if (groupErr) throw groupErr
-
-      // Add creator as super_admin
-      await supabase.from('group_members').insert({
-        group_id: group.id,
-        user_id: user.id,
-        role: 'super_admin',
-        status: 'approved',
+          logoUrl,
+          primaryColour: form.colour,
+          isPublic: form.isPublic,
+          joinApprovalRequired: form.requireApproval,
+        }),
       })
-
-      // Initialise member_stats row
-      await supabase.from('member_stats').insert({
-        user_id: user.id,
-        group_id: group.id,
-      })
+      const createData = await createRes.json()
+      if (!createRes.ok) throw new Error(createData.error || 'Failed to create group')
 
       if (tab === 'migrate') {
-        setCreatedGroup({ id: group.id, slug: group.slug, name: form.name.trim() })
+        setCreatedGroup({ id: createData.groupId, slug: createData.slug, name: form.name.trim() })
         setSubmitting(false)
       } else {
-        router.push(`/g/${group.slug}/admin`)
+        router.push(`/g/${createData.slug}/admin`)
       }
     } catch (err: unknown) {
       const message =
