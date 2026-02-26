@@ -105,15 +105,19 @@ export async function POST(
           .eq('id', user.id)
           .maybeSingle()
 
-        if (adminProfile?.email && memberProfile) {
-          sendJoinRequestEmail({
-            adminEmail: adminProfile.email,
+        const adminEmail = adminProfile?.email
+        if (adminEmail) {
+          const joinResult = await sendJoinRequestEmail({
+            adminEmail,
             adminName: adminProfile.full_name || 'Admin',
-            memberName: memberProfile.full_name || 'A new member',
-            memberEmail: memberProfile.email || user.email || '',
+            memberName: memberProfile?.full_name || 'A new member',
+            memberEmail: memberProfile?.email || user.email || '',
             groupName: group.name,
             groupSlug: group.slug,
-          }).catch((err) => console.error('[api/join] email error:', err))
+          })
+          if (!joinResult.success) {
+            console.error('[api/join] email failed:', joinResult.error)
+          }
         }
       }
     }

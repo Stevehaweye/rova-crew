@@ -106,8 +106,8 @@ export async function POST(
     const eventUrl = `${appUrl}/events/${eventId}`
     const signUpUrl = `${appUrl}/auth?next=/g/${group.slug}&email=${encodeURIComponent(email)}`
 
-    // Send confirmation email (fire-and-forget)
-    sendRsvpConfirmationEmail(email, {
+    // Await email send to ensure it completes before function terminates
+    const emailResult = await sendRsvpConfirmationEmail(email, {
       recipientName: `${first_name} ${last_name}`,
       eventTitle: event.title,
       eventDate: format(startDate, 'EEEE d MMMM yyyy'),
@@ -122,7 +122,10 @@ export async function POST(
       paidAmount: null,
       isGuest: true,
       signUpUrl,
-    }).catch((err) => console.error('[guest-rsvp] email send error:', err))
+    })
+    if (!emailResult.success) {
+      console.error('[guest-rsvp] email send failed:', emailResult.error)
+    }
 
     return NextResponse.json({ success: true, guestRsvpId: rsvp.id })
   } catch (err) {

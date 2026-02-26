@@ -122,7 +122,7 @@ async function send7dayReminder(
       }, 'event_reminder').catch((err) => console.error('[reminders] push error:', err))
 
       if (profile?.email) {
-        sendReminderEmail({
+        const result = await sendReminderEmail({
           recipientEmail: profile.email,
           recipientName: profile.full_name || 'there',
           eventTitle: event.title,
@@ -132,7 +132,8 @@ async function send7dayReminder(
           eventUrl,
           groupName: group.name,
           reminderType: '7day',
-        }).catch((err) => console.error('[reminders] email error:', err))
+        })
+        if (!result.success) console.error('[reminders] 7day email failed:', result.error)
       }
     })
   )
@@ -169,7 +170,7 @@ async function send48hRsvpdReminder(
       }, 'event_reminder').catch((err) => console.error('[reminders] push error:', err))
 
       if (profile?.email) {
-        sendReminderEmail({
+        const result = await sendReminderEmail({
           recipientEmail: profile.email,
           recipientName: profile.full_name || 'there',
           eventTitle: event.title,
@@ -179,7 +180,8 @@ async function send48hRsvpdReminder(
           eventUrl,
           groupName: group.name,
           reminderType: '48h_rsvpd',
-        }).catch((err) => console.error('[reminders] email error:', err))
+        })
+        if (!result.success) console.error('[reminders] 48h email failed:', result.error)
       }
     })
   )

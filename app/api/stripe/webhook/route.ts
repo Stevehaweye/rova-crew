@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
         const paidPence = (session.amount_total ?? eventData.price_pence) as number | null
         const signUpUrl = `${appUrl}/auth?next=/g/${group.slug}&email=${encodeURIComponent(guestEmail)}`
 
-        sendRsvpConfirmationEmail(guestEmail, {
+        const guestResult = await sendRsvpConfirmationEmail(guestEmail, {
           recipientName: `${firstName} ${lastName}`,
           eventTitle: eventData.title,
           eventDate: format(startDate, 'EEEE d MMMM yyyy'),
@@ -134,9 +134,10 @@ export async function POST(request: NextRequest) {
           signUpUrl,
           stripePaymentId,
           stripeReceiptUrl,
-        }).catch((err: unknown) =>
-          console.error('[webhook] email error:', err)
-        )
+        })
+        if (!guestResult.success) {
+          console.error('[webhook] guest email failed:', guestResult.error)
+        }
       }
     } else if (userId) {
       // Insert member RSVP with payment_status = 'paid'
@@ -164,7 +165,9 @@ export async function POST(request: NextRequest) {
           .single(),
       ])
 
-      if (profile?.email && eventData) {
+      // Use profile email or Stripe session email as fallback
+      const memberEmail = profile?.email || session.customer_email
+      if (memberEmail && eventData) {
         const group = eventData.groups as unknown as { name: string; slug: string }
         const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
 
@@ -183,8 +186,8 @@ export async function POST(request: NextRequest) {
         const endDate = new Date(eventData.ends_at)
         const paidPence = (session.amount_total ?? eventData.price_pence) as number | null
 
-        sendRsvpConfirmationEmail(profile.email, {
-          recipientName: profile.full_name ?? 'there',
+        const memberResult = await sendRsvpConfirmationEmail(memberEmail, {
+          recipientName: profile?.full_name ?? 'there',
           eventTitle: eventData.title,
           eventDate: format(startDate, 'EEEE d MMMM yyyy'),
           eventTime: `${format(startDate, 'h:mm a')} - ${format(endDate, 'h:mm a')}`,
@@ -201,9 +204,10 @@ export async function POST(request: NextRequest) {
           signUpUrl: null,
           stripePaymentId,
           stripeReceiptUrl,
-        }).catch((err: unknown) =>
-          console.error('[webhook] member email error:', err)
-        )
+        })
+        if (!memberResult.success) {
+          console.error('[webhook] member email failed:', memberResult.error)
+        }
       }
     }
   } else if (event.type === 'payment_intent.payment_failed') {

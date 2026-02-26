@@ -83,14 +83,15 @@ export async function PATCH(
         .maybeSingle()
 
       if (memberProfile?.email) {
-        sendMemberApprovedEmail({
+        const approvalResult = await sendMemberApprovedEmail({
           memberEmail: memberProfile.email,
           memberName: memberProfile.full_name || 'Member',
           groupName: group.name,
           groupSlug: group.slug,
-        }).catch((err) =>
-          console.error('[api/members] approval email error:', err)
-        )
+        })
+        if (!approvalResult.success) {
+          console.error('[api/members] approval email failed:', approvalResult.error)
+        }
       }
     }
 

@@ -126,10 +126,10 @@ export async function POST(
       url: `/g/${group.slug}`,
     }).catch((err) => console.error('[blast] push error:', err))
 
-    // Batch send emails
-    const emailPromises = recipients
-      .filter((r) => r.email)
-      .map((r) =>
+    // Batch send emails — await to ensure completion before function terminates
+    const emailRecipients = recipients.filter((r) => r.email)
+    const emailResults = await Promise.allSettled(
+      emailRecipients.map((r) =>
         sendBlastEmail({
           recipientEmail: r.email,
           recipientName: r.fullName,
@@ -139,15 +139,19 @@ export async function POST(
           body: blastBody.trim(),
         })
       )
-
-    Promise.allSettled(emailPromises).catch((err) =>
-      console.error('[blast] email batch error:', err)
     )
+
+    const emailsSent = emailResults.filter((r) => r.status === 'fulfilled').length
+    const emailsFailed = emailResults.filter((r) => r.status === 'rejected').length
+    if (emailsFailed > 0) {
+      console.error(`[blast] ${emailsFailed}/${emailRecipients.length} emails failed`)
+    }
 
     return NextResponse.json({
       success: true,
       blastId: blast?.id,
       recipientCount: recipients.length,
+      emailsSent,
     })
   } catch (err) {
     console.error('[blast] error:', err)

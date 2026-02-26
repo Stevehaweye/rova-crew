@@ -203,14 +203,16 @@ export async function POST(
         .single()
 
       if (event && (event.payment_type === 'free' || !event.payment_type)) {
-        // Fetch user profile
+        // Fetch user profile for display name
         const { data: profile } = await serviceClient
           .from('profiles')
           .select('full_name, email')
           .eq('id', user.id)
           .single()
 
-        if (profile?.email) {
+        // Use auth email (always available) with profiles.email as fallback
+        const recipientEmail = user.email || profile?.email
+        if (recipientEmail) {
           const group = event.groups as unknown as { name: string; slug: string }
           const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
           const startDate = new Date(event.starts_at)
@@ -225,9 +227,9 @@ export async function POST(
             errorCorrectionLevel: 'M',
           })
 
-          // Fire-and-forget email
-          sendRsvpConfirmationEmail(profile.email, {
-            recipientName: profile.full_name || 'there',
+          // Await email send to ensure it completes before function terminates
+          const emailResult = await sendRsvpConfirmationEmail(recipientEmail, {
+            recipientName: profile?.full_name || 'there',
             eventTitle: event.title,
             eventDate: format(startDate, 'EEEE d MMMM yyyy'),
             eventTime: `${format(startDate, 'h:mm a')} - ${format(endDate, 'h:mm a')}`,
@@ -241,7 +243,10 @@ export async function POST(
             paidAmount: null,
             isGuest: false,
             signUpUrl: null,
-          }).catch((err) => console.error('[rsvp] email send error:', err))
+          })
+          if (!emailResult.success) {
+            console.error('[rsvp] email send failed:', emailResult.error)
+          }
         }
       }
     }
@@ -304,7 +309,7 @@ export async function POST(
               .single()
 
             if (promotedProfile?.email) {
-              sendWaitlistEmail({
+              const wlResult = await sendWaitlistEmail({
                 recipientEmail: promotedProfile.email,
                 recipientName: promotedProfile.full_name || 'there',
                 eventTitle: evt.title,
@@ -313,7 +318,10 @@ export async function POST(
                 eventLocation: evt.location,
                 eventUrl,
                 groupName: group.name,
-              }).catch((err) => console.error('[rsvp] waitlist email error:', err))
+              })
+              if (!wlResult.success) {
+                console.error('[rsvp] waitlist email failed:', wlResult.error)
+              }
             }
 
             // Auto-add promoted user to event chat channel
