@@ -798,7 +798,7 @@ export default function DMChat({
             <p className="text-[11px] font-semibold" style={{ color: TEAL }}>{replyTo.sender.fullName}</p>
             <p className="text-xs text-gray-400 truncate">{replyTo.content}</p>
           </div>
-          <button onClick={() => setReplyTo(null)} className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-400">
+          <button onClick={() => setReplyTo(null)} aria-label="Cancel reply" className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-400">
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
             </svg>
@@ -828,6 +828,7 @@ export default function DMChat({
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={imageUploading}
+          aria-label="Attach image"
           className="flex-shrink-0 w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"
         >
           {imageUploading ? (
@@ -849,6 +850,7 @@ export default function DMChat({
           onChange={(e) => handleInputChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Message..."
+          aria-label="Type a message"
           rows={1}
           className="flex-1 px-3.5 py-2 rounded-2xl bg-gray-50 border border-gray-200 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition resize-none"
           style={{ '--tw-ring-color': TEAL, maxHeight: '120px', minHeight: '38px' } as React.CSSProperties}
@@ -862,6 +864,7 @@ export default function DMChat({
         <button
           onClick={handleSend}
           disabled={(!body.trim() && !imageUrl) || sending}
+          aria-label="Send message"
           className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-white transition-opacity hover:opacity-90 disabled:opacity-30"
           style={{ backgroundColor: TEAL }}
         >
@@ -874,7 +877,7 @@ export default function DMChat({
       {/* ── Lightbox ────────────────────────────────────────────────── */}
       {lightboxUrl && (
         <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4" onClick={() => setLightboxUrl(null)}>
-          <button className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white" style={{ top: 'calc(env(safe-area-inset-top) + 16px)' }}>
+          <button aria-label="Close image" className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white" style={{ top: 'calc(env(safe-area-inset-top) + 16px)' }}>
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
             </svg>

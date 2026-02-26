@@ -4,7 +4,6 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import confetti from 'canvas-confetti'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -473,31 +472,34 @@ export default function MigrateWizard() {
   useEffect(() => {
     if (state.step === 5 && !confettiFired.current) {
       confettiFired.current = true
-      const duration = 2000
-      const end = Date.now() + duration
 
-      const frame = () => {
-        confetti({
-          particleCount: 3,
-          angle: 60,
-          spread: 55,
-          origin: { x: 0 },
-          colors: ['#0D7377', '#C9982A', '#DC2626', '#7C3AED'],
-        })
-        confetti({
-          particleCount: 3,
-          angle: 120,
-          spread: 55,
-          origin: { x: 1 },
-          colors: ['#0D7377', '#C9982A', '#2563EB', '#059669'],
-        })
+      import('canvas-confetti').then(({ default: confetti }) => {
+        const duration = 2000
+        const end = Date.now() + duration
 
-        if (Date.now() < end) {
-          requestAnimationFrame(frame)
+        const frame = () => {
+          confetti({
+            particleCount: 3,
+            angle: 60,
+            spread: 55,
+            origin: { x: 0 },
+            colors: ['#0D7377', '#C9982A', '#DC2626', '#7C3AED'],
+          })
+          confetti({
+            particleCount: 3,
+            angle: 120,
+            spread: 55,
+            origin: { x: 1 },
+            colors: ['#0D7377', '#C9982A', '#2563EB', '#059669'],
+          })
+
+          if (Date.now() < end) {
+            requestAnimationFrame(frame)
+          }
         }
-      }
 
-      frame()
+        frame()
+      })
     }
   }, [state.step])
 

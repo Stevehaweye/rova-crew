@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { format } from 'date-fns'
@@ -6,6 +7,11 @@ import { createServiceClient } from '@/lib/supabase/service'
 import UserMenu from './user-menu'
 import PushPermissionBanner from '@/components/PushPermissionBanner'
 import PostEventCard, { type PostEventHighlight } from '@/components/feed/PostEventCard'
+
+export const metadata: Metadata = {
+  title: 'Home | ROVA Crew',
+  description: 'Your groups, events, and community — all in one place.',
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

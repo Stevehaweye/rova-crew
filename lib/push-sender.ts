@@ -112,7 +112,6 @@ export async function sendPushToUser(
       .delete()
       .in('id', expiredIds)
 
-    console.log(`[push] Cleaned up ${expiredIds.length} expired subscription(s)`)
   }
 }
 
@@ -200,6 +199,5 @@ export async function sendPushToGroup(
       .delete()
       .in('id', expiredIds)
 
-    console.log(`[push] Cleaned up ${expiredIds.length} expired subscription(s)`)
   }
 }

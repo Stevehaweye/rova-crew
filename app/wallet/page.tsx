@@ -1,9 +1,15 @@
+import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getMemberTier } from '@/lib/tier-themes'
 import CrewCardClient from './crew-card-client'
 import Link from 'next/link'
+
+export const metadata: Metadata = {
+  title: 'My Card | ROVA Crew',
+  description: 'Your Crew Card, badges, and event check-in QR code.',
+}
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 

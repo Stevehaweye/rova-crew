@@ -153,6 +153,7 @@ export default function BottomNav() {
 
   return (
     <nav
+      aria-label="Main navigation"
       className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-100"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
@@ -163,7 +164,8 @@ export default function BottomNav() {
             <Link
               key={tab.href}
               href={tab.href}
-              className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-colors relative"
+              aria-label={tab.label}
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[48px] transition-colors relative"
               style={{ color: active ? TEAL : GRAY }}
             >
               <div className="relative">

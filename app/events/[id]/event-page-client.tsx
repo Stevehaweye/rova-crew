@@ -206,7 +206,7 @@ function Hero({
       {event.coverUrl ? (
         <>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={event.coverUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          <img src={event.coverUrl} alt="" className="absolute inset-0 w-full h-full object-cover" fetchPriority="high" width={1200} height={600} />
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-black/10" />
         </>
       ) : (

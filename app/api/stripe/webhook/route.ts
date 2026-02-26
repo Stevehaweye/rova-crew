@@ -28,8 +28,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
   }
 
-  // Log all webhook events for dev visibility
-  console.log(`[stripe-webhook] Received event: ${event.type} (${event.id})`)
 
   const supabase = createServiceClient()
 
@@ -228,13 +226,6 @@ export async function POST(request: NextRequest) {
     }
   } else if (event.type === 'account.updated') {
     const account = event.data.object as Stripe.Account
-    console.log(
-      `[stripe-webhook] Connect account updated: ${account.id}`,
-      `charges_enabled=${account.charges_enabled}`,
-      `payouts_enabled=${account.payouts_enabled}`,
-      `details_submitted=${account.details_submitted}`
-    )
-
     // Update the group's Stripe Connect status in the database
     await supabase
       .from('stripe_accounts')
@@ -246,7 +237,6 @@ export async function POST(request: NextRequest) {
       })
       .eq('stripe_account_id', account.id)
   } else {
-    console.log(`[stripe-webhook] Unhandled event type: ${event.type}`)
   }
 
   return NextResponse.json({ received: true })

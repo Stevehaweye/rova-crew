@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import confetti from 'canvas-confetti'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -106,35 +105,43 @@ function FirstStepsCelebration({
   onDismiss: () => void
 }) {
   useEffect(() => {
-    // Fire confetti
-    const duration = 2000
-    const end = Date.now() + duration
+    // Fire confetti (dynamic import to reduce bundle size)
+    let cancelled = false
 
-    const frame = () => {
-      confetti({
-        particleCount: 3,
-        angle: 60,
-        spread: 55,
-        origin: { x: 0, y: 0.7 },
-        colors: ['#0D7377', '#C9982A', '#FFD700', '#FF6B6B', '#4ECDC4'],
-      })
-      confetti({
-        particleCount: 3,
-        angle: 120,
-        spread: 55,
-        origin: { x: 1, y: 0.7 },
-        colors: ['#0D7377', '#C9982A', '#FFD700', '#FF6B6B', '#4ECDC4'],
-      })
+    import('canvas-confetti').then(({ default: confetti }) => {
+      if (cancelled) return
+      const duration = 2000
+      const end = Date.now() + duration
 
-      if (Date.now() < end) {
-        requestAnimationFrame(frame)
+      const frame = () => {
+        confetti({
+          particleCount: 3,
+          angle: 60,
+          spread: 55,
+          origin: { x: 0, y: 0.7 },
+          colors: ['#0D7377', '#C9982A', '#FFD700', '#FF6B6B', '#4ECDC4'],
+        })
+        confetti({
+          particleCount: 3,
+          angle: 120,
+          spread: 55,
+          origin: { x: 1, y: 0.7 },
+          colors: ['#0D7377', '#C9982A', '#FFD700', '#FF6B6B', '#4ECDC4'],
+        })
+
+        if (Date.now() < end) {
+          requestAnimationFrame(frame)
+        }
       }
-    }
-    frame()
+      frame()
+    })
 
     // Auto-dismiss after 3 seconds
     const timer = setTimeout(onDismiss, 3000)
-    return () => clearTimeout(timer)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
   }, [onDismiss])
 
   return (

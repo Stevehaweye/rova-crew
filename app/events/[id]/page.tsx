@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import EventPageClient from './event-page-client'
@@ -25,6 +26,39 @@ function NotFoundView() {
       </div>
     </div>
   )
+}
+
+// ─── Metadata ────────────────────────────────────────────────────────────────
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params
+  const svc = createServiceClient()
+  const { data: event } = await svc
+    .from('events')
+    .select('title, description, cover_url, location, starts_at, groups ( name )')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (!event) return { title: 'Event | ROVA Crew' }
+
+  const groupName = (event.groups as unknown as { name: string })?.name ?? 'ROVA Crew'
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://rovacrew.com'
+  return {
+    title: `${event.title} | ${groupName}`,
+    description: event.description ?? `${event.title} — join on ROVA Crew`,
+    openGraph: {
+      title: event.title,
+      description: event.description ?? `${event.title} — join on ROVA Crew`,
+      url: `${appUrl}/events/${id}`,
+      images: event.cover_url ? [{ url: event.cover_url }] : [],
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: event.title,
+      description: event.description ?? undefined,
+    },
+  }
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────

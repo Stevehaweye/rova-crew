@@ -846,7 +846,7 @@ export default function EventChatNew({
             <p className="text-[11px] font-semibold" style={{ color: groupColour }}>{replyTo.sender.fullName}</p>
             <p className="text-xs text-gray-400 truncate">{replyTo.content}</p>
           </div>
-          <button onClick={() => setReplyTo(null)} className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-400">
+          <button onClick={() => setReplyTo(null)} aria-label="Cancel reply" className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-400">
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
             </svg>
@@ -887,6 +887,7 @@ export default function EventChatNew({
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={imageUploading}
+            aria-label="Attach image"
             className="flex-shrink-0 w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"
           >
             {imageUploading ? (
@@ -909,6 +910,7 @@ export default function EventChatNew({
             onChange={(e) => setBody(e.target.value.slice(0, 2000))}
             onKeyDown={handleKeyDown}
             placeholder="Message the group..."
+            aria-label="Message the group"
             rows={1}
             className="flex-1 px-3.5 py-2 rounded-2xl bg-gray-50 border border-gray-200 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition resize-none"
             style={{ '--tw-ring-color': groupColour, maxHeight: '120px', minHeight: '38px' } as React.CSSProperties}
@@ -923,6 +925,7 @@ export default function EventChatNew({
           <button
             onClick={handleSend}
             disabled={(!body.trim() && !imageUrl) || sending}
+            aria-label="Send message"
             className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-white transition-opacity hover:opacity-90 disabled:opacity-30"
             style={{ backgroundColor: groupColour }}
           >

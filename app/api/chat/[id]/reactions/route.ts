@@ -28,15 +28,11 @@ export async function POST(
 
     const serviceClient = createServiceClient()
 
-    console.log('[chat/reactions] inserting:', { messageId, userId: user.id, emoji })
-
     const { data: inserted, error } = await serviceClient.from('message_reactions').insert({
       message_id: messageId,
       user_id: user.id,
       emoji,
     }).select('id')
-
-    console.log('[chat/reactions] result:', { inserted, error })
 
     if (error) {
       if (error.code === '23505') {

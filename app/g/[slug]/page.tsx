@@ -1,6 +1,8 @@
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { getHallOfFameRecords, type HallOfFameRecord } from '@/lib/hall-of-fame'
 import { JoinCard } from './join-button'
 import ContactOrganiserButton from '@/components/ContactOrganiserButton'
@@ -173,6 +175,9 @@ function Hero({ group, colour }: { group: Group; colour: string }) {
             src={group.hero_url}
             alt=""
             className="absolute inset-0 w-full h-full object-cover"
+            fetchPriority="high"
+            width={1200}
+            height={600}
           />
           {/* Dark gradient for text readability */}
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-black/10" />
@@ -519,6 +524,38 @@ function HallOfFame({ records, colour, slug }: { records: HallOfFameRecord[]; co
       </Link>
     </div>
   )
+}
+
+// ─── Metadata ────────────────────────────────────────────────────────────────
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params
+  const svc = createServiceClient()
+  const { data: group } = await svc
+    .from('groups')
+    .select('name, tagline, description, logo_url')
+    .eq('slug', slug)
+    .maybeSingle()
+
+  if (!group) return { title: 'Group | ROVA Crew' }
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://rovacrew.com'
+  return {
+    title: `${group.name} | ROVA Crew`,
+    description: group.tagline ?? group.description ?? `Join ${group.name} on ROVA Crew`,
+    openGraph: {
+      title: group.name,
+      description: group.tagline ?? group.description ?? `Join ${group.name} on ROVA Crew`,
+      url: `${appUrl}/g/${slug}`,
+      images: group.logo_url ? [{ url: group.logo_url }] : [],
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary',
+      title: group.name,
+      description: group.tagline ?? group.description ?? undefined,
+    },
+  }
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
