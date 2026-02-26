@@ -14,27 +14,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const {
-      groupId,
-      title,
-      description,
-      location,
-      mapsUrl,
-      startsAt,
-      endsAt,
-      coverUrl,
-      maxCapacity,
-      paymentType,
-      pricePence,
-      totalCostPence,
-      minParticipants,
-      allowGuestRsvp,
-      plusOnesAllowed,
-      maxPlusOnesPerMember,
-      plusOnesCountTowardCapacity,
-    } = body
 
-    if (!groupId || !title?.trim() || !startsAt || !endsAt) {
+    // The form sends snake_case field names matching DB columns,
+    // plus groupId in camelCase
+    const groupId = body.groupId
+    const title = body.title
+    const starts_at = body.starts_at
+    const ends_at = body.ends_at
+
+    if (!groupId || !title?.trim() || !starts_at || !ends_at) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
@@ -57,27 +45,28 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert event via service client (bypasses RLS)
+    // Body fields are already in snake_case matching DB columns
     const { data: eventData, error: eventErr } = await serviceClient
       .from('events')
       .insert({
         group_id: groupId,
         created_by: user.id,
         title: title.trim(),
-        description: description?.trim() || null,
-        location: location?.trim() || null,
-        maps_url: mapsUrl?.trim() || null,
-        starts_at: startsAt,
-        ends_at: endsAt,
-        cover_url: coverUrl || null,
-        max_capacity: maxCapacity || null,
-        payment_type: paymentType,
-        price_pence: pricePence || null,
-        total_cost_pence: totalCostPence || null,
-        min_participants: minParticipants || null,
-        allow_guest_rsvp: allowGuestRsvp ?? false,
-        plus_ones_allowed: plusOnesAllowed ?? false,
-        max_plus_ones_per_member: maxPlusOnesPerMember ?? 3,
-        plus_ones_count_toward_capacity: plusOnesCountTowardCapacity ?? true,
+        description: body.description?.trim() || null,
+        location: body.location?.trim() || null,
+        maps_url: body.maps_url?.trim() || null,
+        starts_at,
+        ends_at,
+        cover_url: body.cover_url || null,
+        max_capacity: body.max_capacity || null,
+        payment_type: body.payment_type,
+        price_pence: body.price_pence || null,
+        total_cost_pence: body.total_cost_pence || null,
+        min_participants: body.min_participants || null,
+        allow_guest_rsvp: body.allow_guest_rsvp ?? false,
+        plus_ones_allowed: body.plus_ones_allowed ?? false,
+        max_plus_ones_per_member: body.max_plus_ones_per_member ?? 3,
+        plus_ones_count_toward_capacity: body.plus_ones_count_toward_capacity ?? true,
       })
       .select('id')
       .single()
