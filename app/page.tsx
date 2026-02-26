@@ -13,6 +13,7 @@ interface GroupRow {
   logo_url: string | null
   hero_url: string | null
   primary_colour: string
+  location: string | null
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -31,7 +32,7 @@ export default async function RootPage() {
   const [groupsResult, memberCountResult, eventCountResult] = await Promise.all([
     supabase
       .from('groups')
-      .select('id, name, slug, tagline, category, logo_url, hero_url, primary_colour')
+      .select('id, name, slug, tagline, category, logo_url, hero_url, primary_colour, location')
       .eq('is_public', true)
       .order('created_at', { ascending: false })
       .limit(24),
@@ -97,6 +98,7 @@ export default async function RootPage() {
       primaryColour: g.primary_colour.startsWith('#') ? g.primary_colour : `#${g.primary_colour}`,
       memberCount: memberCounts[g.id] ?? 0,
       nextEventDate: nextEvents[g.id] ?? null,
+      location: g.location,
     }))
     .sort((a, b) => b.memberCount - a.memberCount)
 

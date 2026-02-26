@@ -216,7 +216,7 @@ export async function PATCH(
 
     const { rsvp_id, table, action } = body as {
       rsvp_id: string
-      table: 'rsvps' | 'guest_rsvps'
+      table: 'rsvps' | 'guest_rsvps' | 'event_plus_ones'
       action: 'checkin' | 'undo'
     }
 
@@ -273,6 +273,16 @@ export async function PATCH(
       const { error } = await supabase
         .from('guest_rsvps')
         .update({ checked_in_at: checkedInAt, status: statusUpdate })
+        .eq('id', rsvp_id)
+        .eq('event_id', eventId)
+
+      if (error) {
+        return NextResponse.json({ success: false, error: 'Update failed.' }, { status: 500 })
+      }
+    } else if (table === 'event_plus_ones') {
+      const { error } = await supabase
+        .from('event_plus_ones')
+        .update({ checked_in: action === 'checkin' })
         .eq('id', rsvp_id)
         .eq('event_id', eventId)
 

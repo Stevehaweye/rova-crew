@@ -20,6 +20,7 @@ export interface JoinCardProps {
   isLoggedIn: boolean
   membershipFeeEnabled?: boolean
   membershipFeePence?: number | null
+  inviteToken?: string | null
 }
 
 // ─── Animated checkmark ───────────────────────────────────────────────────────
@@ -89,6 +90,7 @@ export function JoinCard({
   isLoggedIn,
   membershipFeeEnabled,
   membershipFeePence,
+  inviteToken,
 }: JoinCardProps) {
   const router = useRouter()
 
@@ -186,6 +188,15 @@ export function JoinCard({
       setLocalCount((c) => c + 1)
       setStatus('joined')
 
+      // Fire-and-forget: accept invite token if present
+      if (inviteToken) {
+        fetch(`/api/groups/${groupSlug}/invites/accept`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: inviteToken }),
+        }).catch(() => {})
+      }
+
       // Fire-and-forget: check if this member was a guest who converted
       fetch(`/api/groups/${groupSlug}/check-guest-conversion`, { method: 'POST' })
         .catch(() => {})
@@ -193,6 +204,11 @@ export function JoinCard({
       // Fire-and-forget: recalculate group health score
       fetch(`/api/groups/${groupSlug}/health-score-recalc`, { method: 'POST' })
         .catch(() => {})
+
+      // Redirect to welcome page after a brief delay to show success state
+      setTimeout(() => {
+        router.push(`/g/${groupSlug}/welcome`)
+      }, 800)
     } else {
       setStatus('pending')
     }

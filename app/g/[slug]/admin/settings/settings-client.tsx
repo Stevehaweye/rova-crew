@@ -28,11 +28,12 @@ interface Props {
   tierTheme: string
   badgeAnnouncementsEnabled: boolean
   watermarkPhotos: boolean
+  location: string
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function SettingsClient({ group, stripe, membershipFee, dmEnabled: initialDmEnabled, tierTheme: initialTierTheme, badgeAnnouncementsEnabled: initialBadgeAnnounce, watermarkPhotos: initialWatermark }: Props) {
+export default function SettingsClient({ group, stripe, membershipFee, dmEnabled: initialDmEnabled, tierTheme: initialTierTheme, badgeAnnouncementsEnabled: initialBadgeAnnounce, watermarkPhotos: initialWatermark, location: initialLocation }: Props) {
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -58,6 +59,10 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
   // Watermark state
   const [watermarkOn, setWatermarkOn] = useState(initialWatermark)
   const [watermarkSaving, setWatermarkSaving] = useState(false)
+
+  // Location state
+  const [locationVal, setLocationVal] = useState(initialLocation)
+  const [locationSaving, setLocationSaving] = useState(false)
 
   // Show toast on return from Stripe
   useEffect(() => {
@@ -208,6 +213,26 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
     setWatermarkSaving(false)
   }
 
+  async function handleSaveLocation() {
+    setLocationSaving(true)
+    try {
+      const res = await fetch(`/api/groups/${group.slug}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ location: locationVal }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setToast(data.error || 'Failed to save')
+      } else {
+        setToast(locationVal.trim() ? `Location set to ${locationVal.trim()}` : 'Location cleared')
+      }
+    } catch {
+      setToast('Network error. Please try again.')
+    }
+    setLocationSaving(false)
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -235,6 +260,43 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
             <p className="text-sm text-teal-800">{toast}</p>
           </div>
         )}
+
+        {/* ── Location ────────────────────────────────────────────── */}
+        <section className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center">
+              <svg className="w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-900">Location</p>
+              <p className="text-xs text-gray-500">Help people find your group on the discovery page</p>
+            </div>
+          </div>
+
+          <div className="px-5 py-5 space-y-4">
+            <input
+              type="text"
+              value={locationVal}
+              onChange={(e) => setLocationVal(e.target.value)}
+              placeholder="e.g. London, UK"
+              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500"
+            />
+            <p className="text-xs text-gray-400">
+              Shown on your group card in the discovery page. Leave blank to hide.
+            </p>
+            <button
+              onClick={handleSaveLocation}
+              disabled={locationSaving}
+              className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+              style={{ backgroundColor: group.colour }}
+            >
+              {locationSaving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </section>
 
         {/* ── Stripe Connect Card ──────────────────────────────────────── */}
         <section className="bg-white rounded-2xl border border-gray-100 overflow-hidden">

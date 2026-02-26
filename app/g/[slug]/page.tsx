@@ -525,10 +525,13 @@ function HallOfFame({ records, colour, slug }: { records: HallOfFameRecord[]; co
 
 export default async function GroupPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>
+  searchParams: Promise<{ invite?: string }>
 }) {
   const { slug } = await params
+  const { invite: inviteToken } = await searchParams
   const supabase = await createClient()
 
   // Fetch group
@@ -679,8 +682,34 @@ export default async function GroupPage({
   const colour = hex(group.primary_colour)
   const initialStatus = membership?.status as 'approved' | 'pending' | null ?? null
 
+  // JSON-LD structured data for SEO
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'SportsOrganization',
+    name: group.name,
+    description: group.description ?? group.tagline ?? undefined,
+    url: `${process.env.NEXT_PUBLIC_BASE_URL ?? 'https://rovacrew.com'}/g/${group.slug}`,
+    logo: group.logo_url ?? undefined,
+    location: undefined as { '@type': string; name: string } | undefined,
+    member: {
+      '@type': 'QuantitativeValue',
+      value: memberCount,
+    },
+    event: upcomingEvents.map((e) => ({
+      '@type': 'Event',
+      name: e.title,
+      startDate: e.startsAt,
+      location: e.location ? { '@type': 'Place', name: e.location } : undefined,
+      url: `${process.env.NEXT_PUBLIC_BASE_URL ?? 'https://rovacrew.com'}/events/${e.id}`,
+    })),
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
 
       {/* Hero */}
       <Hero group={group} colour={colour} />
@@ -718,6 +747,7 @@ export default async function GroupPage({
               isLoggedIn={!!user}
               membershipFeeEnabled={group.membership_fee_enabled ?? false}
               membershipFeePence={group.membership_fee_pence ?? null}
+              inviteToken={inviteToken ?? null}
             />
             {/* Group Chat — only for approved members */}
             {initialStatus === 'approved' && (

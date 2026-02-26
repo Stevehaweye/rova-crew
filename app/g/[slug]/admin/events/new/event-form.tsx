@@ -40,6 +40,9 @@ interface EventFormData {
   coverPreview: string | null
   membersOnly: boolean
   allowGuests: boolean
+  plusOnesAllowed: boolean
+  maxPlusOnesPerMember: string
+  plusOnesCountTowardCapacity: boolean
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -573,6 +576,9 @@ export default function EventForm({
     coverPreview: initialData?.existingCoverUrl ?? null,
     membersOnly: initialData?.membersOnly ?? true,
     allowGuests: initialData?.allowGuests ?? true,
+    plusOnesAllowed: initialData?.plusOnesAllowed ?? true,
+    maxPlusOnesPerMember: initialData?.maxPlusOnesPerMember ?? '3',
+    plusOnesCountTowardCapacity: initialData?.plusOnesCountTowardCapacity ?? true,
   })
 
   function patch(updates: Partial<EventFormData>) {
@@ -698,6 +704,9 @@ export default function EventForm({
         total_cost_pence: form.paymentType === 'shared_cost' ? Math.round(parseFloat(form.totalCost) * 100) : null,
         min_participants: form.paymentType === 'shared_cost' ? parseInt(form.minParticipants) : null,
         allow_guest_rsvp: form.allowGuests,
+        plus_ones_allowed: form.plusOnesAllowed,
+        max_plus_ones_per_member: form.plusOnesAllowed ? parseInt(form.maxPlusOnesPerMember) || 3 : 3,
+        plus_ones_count_toward_capacity: form.plusOnesCountTowardCapacity,
       }
 
       let resultEventId: string
@@ -1192,6 +1201,51 @@ export default function EventForm({
                 label="Allow guest RSVPs"
                 description="Guests RSVP with just a name and email — no account required."
               />
+            </div>
+
+            <Divider />
+
+            {/* ── Section 07: Guest Plus-Ones ────────────────────────── */}
+            <SectionHeader n="07" title="Guest Plus-Ones" sub="Let members bring friends" />
+
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 divide-y divide-gray-100">
+              <Toggle
+                checked={form.plusOnesAllowed}
+                onChange={(v) => patch({ plusOnesAllowed: v })}
+                label="Allow guest plus-ones"
+                description="Members can bring friends who aren't on the platform."
+              />
+              {form.plusOnesAllowed && (
+                <>
+                  <div className="py-4">
+                    <label className="block text-sm font-semibold text-gray-800 mb-1">Max guests per member</label>
+                    <p className="text-sm text-gray-500 mb-3">How many plus-ones can each member bring?</p>
+                    <div className="flex gap-2">
+                      {['1', '2', '3', '4', '5'].map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          onClick={() => patch({ maxPlusOnesPerMember: n })}
+                          className="w-10 h-10 rounded-xl font-bold text-sm transition-all"
+                          style={
+                            form.maxPlusOnesPerMember === n
+                              ? { backgroundColor: colour, color: '#fff' }
+                              : { backgroundColor: '#F3F4F6', color: '#4B5563' }
+                          }
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <Toggle
+                    checked={form.plusOnesCountTowardCapacity}
+                    onChange={(v) => patch({ plusOnesCountTowardCapacity: v })}
+                    label="Guests count toward capacity"
+                    description="When enabled, plus-one guests are included in the event capacity limit."
+                  />
+                </>
+              )}
             </div>
 
             {/* ── Submit ─────────────────────────────────────────────── */}

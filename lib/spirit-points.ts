@@ -14,6 +14,7 @@ const ACTION_DEFAULTS: Record<string, { points: number; weeklyCap: number }> = {
   flyer_share:      { points: 5,  weeklyCap: 15 },
   guest_conversion: { points: 30, weeklyCap: Infinity },
   event_rating:     { points: 2,  weeklyCap: Infinity },
+  guest_invite:     { points: 5,  weeklyCap: 15 },
 }
 
 const GLOBAL_WEEKLY_CAP = 100

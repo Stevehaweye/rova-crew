@@ -4,6 +4,7 @@ import { useState, useRef, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { parsePhoneNumbers, generateWhatsAppUrl, isValidPhone } from '@/lib/phone-utils'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,7 @@ interface GroupForm {
   tagline: string
   category: string
   description: string
+  location: string
   logoFile: File | null
   logoPreview: string | null
   colour: string
@@ -314,36 +316,238 @@ function LivePreview({ form }: { form: GroupForm }) {
   )
 }
 
-// ─── Migrate placeholder ──────────────────────────────────────────────────────
+// ─── Migrate invite flow (shown after group creation via migrate tab) ─────────
 
-function MigratePlaceholder() {
+interface CreatedGroup {
+  id: string
+  slug: string
+  name: string
+}
+
+interface InviteResult {
+  phone: string
+  inviteToken: string
+  inviteUrl: string
+  status: string
+}
+
+function MigrateInviteFlow({ group, colour }: { group: CreatedGroup; colour: string }) {
+  const router = useRouter()
+  const [phoneInput, setPhoneInput] = useState('')
+  const [parsed, setParsed] = useState<string[]>([])
+  const [invites, setInvites] = useState<InviteResult[]>([])
+  const [step, setStep] = useState<'input' | 'review' | 'send'>('input')
+  const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState<string | null>(null)
+  const [error, setError] = useState('')
+
+  function handleParse() {
+    const phones = parsePhoneNumbers(phoneInput)
+    if (phones.length === 0) {
+      setError('No valid phone numbers found. Try pasting numbers one per line.')
+      return
+    }
+    setError('')
+    setParsed(phones)
+    setStep('review')
+  }
+
+  async function handleGenerateInvites() {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/groups/${group.slug}/invites`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phones: parsed }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to generate invites')
+      setInvites(data.invites ?? [])
+      setStep('send')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Something went wrong')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function copyToClipboard(text: string, key: string) {
+    navigator.clipboard.writeText(text)
+    setCopied(key)
+    setTimeout(() => setCopied(null), 2000)
+  }
+
+  function copyAllLinks() {
+    const links = invites.map((inv) => inv.inviteUrl).join('\n')
+    copyToClipboard(links, 'all')
+  }
+
+  const whatsAppMessage = `Hey! I've moved our group "${group.name}" to ROVA Crew — it's free and way better for organising events. Join here:`
+
   return (
-    <div className="max-w-lg mx-auto text-center py-20 px-6">
-      <div className="text-7xl mb-6 select-none">📱</div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-3">
-        AI Migration — Coming in Week 6
-      </h2>
-      <p className="text-gray-500 leading-relaxed">
-        We&apos;re building an AI-powered tool to automatically import your WhatsApp group
-        history, member list, and files into ROVA Crew — with zero manual work.
-      </p>
-      <div
-        className="mt-8 inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold"
-        style={{ backgroundColor: '#0D7377' + '15', color: '#0D7377' }}
-      >
-        <span
-          className="w-2 h-2 rounded-full animate-pulse"
-          style={{ backgroundColor: '#0D7377' }}
-        />
-        Coming soon
+    <div className="max-w-xl mx-auto py-8 px-4">
+      {/* Success header */}
+      <div className="text-center mb-8">
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl" style={{ backgroundColor: colour + '15' }}>
+          ✅
+        </div>
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">
+          {group.name} is live!
+        </h2>
+        <p className="text-gray-500 text-sm">
+          Now invite your WhatsApp members to join.
+        </p>
       </div>
-      <div className="mt-10">
+
+      {error && (
+        <div className="mb-4 rounded-xl bg-red-50 border border-red-100 px-4 py-3">
+          <p className="text-red-600 text-sm">{error}</p>
+        </div>
+      )}
+
+      {/* Step 1: Input */}
+      {step === 'input' && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <h3 className="font-semibold text-gray-900 mb-1">Paste phone numbers</h3>
+          <p className="text-xs text-gray-400 mb-4">
+            One per line, comma-separated, or space-separated. UK numbers without country code will default to +44.
+          </p>
+          <textarea
+            value={phoneInput}
+            onChange={(e) => setPhoneInput(e.target.value)}
+            placeholder={"07700 900123\n+44 7911 123456\n+1 555 123 4567"}
+            rows={8}
+            className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 resize-none font-mono"
+            style={{ '--tw-ring-color': colour } as React.CSSProperties}
+          />
+          <button
+            type="button"
+            onClick={handleParse}
+            disabled={!phoneInput.trim()}
+            className="mt-4 w-full py-3.5 rounded-xl text-white font-semibold text-sm transition-opacity hover:opacity-90 disabled:opacity-50"
+            style={{ backgroundColor: colour }}
+          >
+            Parse numbers →
+          </button>
+        </div>
+      )}
+
+      {/* Step 2: Review */}
+      {step === 'review' && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <h3 className="font-semibold text-gray-900 mb-1">
+            {parsed.length} number{parsed.length !== 1 ? 's' : ''} found
+          </h3>
+          <p className="text-xs text-gray-400 mb-4">Review and generate invite links.</p>
+
+          <div className="max-h-60 overflow-y-auto space-y-2 mb-6">
+            {parsed.map((phone, i) => (
+              <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-gray-50">
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${isValidPhone(phone) ? 'bg-emerald-500' : 'bg-red-400'}`} />
+                <span className="text-sm font-mono text-gray-700">{phone}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setStep('input')}
+              className="flex-1 py-3 rounded-xl text-sm font-semibold border-2 border-gray-200 text-gray-600 hover:border-gray-300"
+            >
+              ← Back
+            </button>
+            <button
+              type="button"
+              onClick={handleGenerateInvites}
+              disabled={loading}
+              className="flex-1 py-3 rounded-xl text-white font-semibold text-sm transition-opacity hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{ backgroundColor: colour }}
+            >
+              {loading ? 'Generating...' : 'Generate invite links'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: Send */}
+      {step === 'send' && (
+        <div className="space-y-4">
+          {/* Bulk actions */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={copyAllLinks}
+                className="flex-1 py-3 rounded-xl text-sm font-semibold border-2 border-gray-200 text-gray-700 hover:border-gray-300 transition-colors"
+              >
+                {copied === 'all' ? '✓ Copied!' : '📋 Copy all links'}
+              </button>
+              <a
+                href={generateWhatsAppUrl(
+                  invites[0]?.phone ?? '',
+                  `${whatsAppMessage}\n${invites[0]?.inviteUrl ?? ''}`
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 py-3 rounded-xl text-white text-sm font-semibold text-center transition-opacity hover:opacity-90"
+                style={{ backgroundColor: '#25D366' }}
+              >
+                💬 Open WhatsApp
+              </a>
+            </div>
+          </div>
+
+          {/* Individual invites */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-100">
+            {invites.map((inv, i) => (
+              <div key={i} className="px-5 py-3 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-mono text-gray-700 truncate">{inv.phone}</p>
+                  <p className="text-xs text-gray-400 truncate">{inv.inviteUrl}</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <a
+                    href={generateWhatsAppUrl(inv.phone, `${whatsAppMessage}\n${inv.inviteUrl}`)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm"
+                    style={{ backgroundColor: '#25D366' }}
+                    title="Send via WhatsApp"
+                  >
+                    💬
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(inv.inviteUrl, inv.phone)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center bg-gray-100 text-gray-500 hover:bg-gray-200 text-sm"
+                    title="Copy invite link"
+                  >
+                    {copied === inv.phone ? '✓' : '📋'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Status count */}
+          <p className="text-center text-xs text-gray-400">
+            {invites.length} invite{invites.length !== 1 ? 's' : ''} generated.
+            Members will join when they click the link and sign up.
+          </p>
+        </div>
+      )}
+
+      {/* Skip / go to admin */}
+      <div className="mt-8 text-center">
         <button
           type="button"
-          className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
-          onClick={() => window.history.back()}
+          onClick={() => router.push(`/g/${group.slug}/admin`)}
+          className="text-sm font-semibold transition-opacity hover:opacity-75"
+          style={{ color: colour }}
         >
-          ← Go back
+          {step === 'send' ? 'Go to admin dashboard →' : 'Skip — I\'ll invite later →'}
         </button>
       </div>
     </div>
@@ -358,6 +562,7 @@ export default function NewGroupPage() {
   const slugInputRef = useRef<HTMLInputElement>(null)
 
   const [tab, setTab] = useState<'fresh' | 'migrate'>('fresh')
+  const [createdGroup, setCreatedGroup] = useState<CreatedGroup | null>(null)
   const [slugManual, setSlugManual] = useState(false)
   const [slugEditing, setSlugEditing] = useState(false)
   const [dragOver, setDragOver] = useState(false)
@@ -371,6 +576,7 @@ export default function NewGroupPage() {
     tagline: '',
     category: '',
     description: '',
+    location: '',
     logoFile: null,
     logoPreview: null,
     colour: '#0D7377',
@@ -486,6 +692,7 @@ export default function NewGroupPage() {
           tagline: form.tagline.trim() || null,
           description: form.description.trim() || null,
           category: form.category,
+          location: form.location.trim() || null,
           logo_url: logoUrl,
           primary_colour: form.colour.replace('#', ''),
           is_public: form.isPublic,
@@ -511,7 +718,12 @@ export default function NewGroupPage() {
         group_id: group.id,
       })
 
-      router.push(`/g/${group.slug}/admin`)
+      if (tab === 'migrate') {
+        setCreatedGroup({ id: group.id, slug: group.slug, name: form.name.trim() })
+        setSubmitting(false)
+      } else {
+        router.push(`/g/${group.slug}/admin`)
+      }
     } catch (err: unknown) {
       const message =
         (err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string')
@@ -580,8 +792,8 @@ export default function NewGroupPage() {
           ))}
         </div>
 
-        {tab === 'migrate' ? (
-          <MigratePlaceholder />
+        {tab === 'migrate' && createdGroup ? (
+          <MigrateInviteFlow group={createdGroup} colour={form.colour} />
         ) : (
           <div className="lg:grid lg:grid-cols-[1fr_360px] lg:gap-16 xl:gap-20 lg:items-start">
 
@@ -725,6 +937,18 @@ export default function NewGroupPage() {
                     placeholder="Tell potential members what your group is about, who it's for, and what to expect..."
                     rows={4}
                     className="w-full px-4 py-3.5 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0D7377] focus:border-transparent transition resize-none"
+                  />
+                </div>
+
+                {/* Location */}
+                <div>
+                  <FieldLabel>Location</FieldLabel>
+                  <input
+                    type="text"
+                    value={form.location}
+                    onChange={(e) => patch({ location: e.target.value.slice(0, 100) })}
+                    placeholder="e.g. London, UK"
+                    className="w-full px-4 py-3.5 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0D7377] focus:border-transparent transition mt-1.5"
                   />
                 </div>
               </div>

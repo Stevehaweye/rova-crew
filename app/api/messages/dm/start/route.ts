@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { findOrCreateDmChannel } from '@/lib/dm-utils'
 
 export async function POST(request: NextRequest) {
   try {
@@ -60,50 +61,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'DMs are disabled in your shared groups' }, { status: 403 })
     }
 
-    // ── Find existing DM channel ───────────────────────────────────────
-    const { data: myDmMemberships } = await serviceClient
-      .from('channel_members')
-      .select('channel_id, channels!inner(id, type)')
-      .eq('user_id', user.id)
+    // ── Find or create DM channel ────────────────────────────────────────
+    const channelId = await findOrCreateDmChannel(user.id, otherUserId)
 
-    const dmChannelIds = (myDmMemberships ?? [])
-      .filter((cm) => (cm.channels as unknown as { type: string })?.type === 'dm')
-      .map((cm) => cm.channel_id)
-
-    if (dmChannelIds.length > 0) {
-      const { data: existing } = await serviceClient
-        .from('channel_members')
-        .select('channel_id')
-        .eq('user_id', otherUserId)
-        .in('channel_id', dmChannelIds)
-        .limit(1)
-        .maybeSingle()
-
-      if (existing) {
-        return NextResponse.json({ channelId: existing.channel_id })
-      }
-    }
-
-    // ── Create new DM channel ──────────────────────────────────────────
-    const { data: newChannel, error: channelErr } = await serviceClient
-      .from('channels')
-      .insert({ type: 'dm', group_id: null, name: 'DM' })
-      .select('id')
-      .single()
-
-    if (channelErr || !newChannel) {
-      console.error('[dm/start] channel create error:', channelErr)
-      return NextResponse.json({ error: 'Failed to create channel' }, { status: 500 })
-    }
-
-    // Add both users to channel_members
-    const now = new Date().toISOString()
-    await serviceClient.from('channel_members').insert([
-      { channel_id: newChannel.id, user_id: user.id, last_read_at: now },
-      { channel_id: newChannel.id, user_id: otherUserId, last_read_at: now },
-    ])
-
-    return NextResponse.json({ channelId: newChannel.id })
+    return NextResponse.json({ channelId })
   } catch (err) {
     console.error('[dm/start] error:', err)
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })

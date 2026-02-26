@@ -151,6 +151,40 @@ export default async function EventPage({
   const memberNotGoingCount = notGoingCountResult.count ?? 0
   const guestGoingCount = guestRsvpCount.count ?? 0
 
+  // ── Plus-ones data ─────────────────────────────────────────────────────
+  const [plusOnesResult, currentUserPlusOnesResult] = await Promise.all([
+    svc
+      .from('event_plus_ones')
+      .select('id, guest_name, user_id, profiles:user_id ( full_name )')
+      .eq('event_id', id)
+      .order('created_at', { ascending: true }),
+    user
+      ? svc
+          .from('event_plus_ones')
+          .select('guest_name, guest_email')
+          .eq('event_id', id)
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: true })
+      : Promise.resolve({ data: [] }),
+  ])
+
+  const allPlusOnes = (plusOnesResult.data ?? []).map((p) => {
+    const profile = p.profiles as unknown as { full_name: string } | null
+    return {
+      id: p.id,
+      guestName: p.guest_name,
+      userId: p.user_id,
+      hostName: profile?.full_name ?? 'Member',
+    }
+  })
+
+  const currentUserPlusOnes = (currentUserPlusOnesResult.data ?? []).map((p) => ({
+    name: p.guest_name,
+    email: p.guest_email ?? undefined,
+  }))
+
+  const plusOneCount = allPlusOnes.length
+
   // ── Event Chat data ──────────────────────────────────────────────────────
   const serviceClient = svc
 
@@ -310,7 +344,42 @@ export default async function EventPage({
     })
   }
 
+  // JSON-LD structured data for SEO
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://rovacrew.com'
+  const totalGoing = memberGoingCount + guestGoingCount + plusOneCount
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Event',
+    name: event.title,
+    description: event.description ?? undefined,
+    startDate: event.starts_at,
+    endDate: event.ends_at,
+    location: event.location ? { '@type': 'Place', name: event.location } : undefined,
+    image: event.cover_url ?? undefined,
+    url: `${baseUrl}/events/${event.id}`,
+    organizer: {
+      '@type': 'Organization',
+      name: group.name,
+      url: `${baseUrl}/g/${group.slug}`,
+    },
+    offers: {
+      '@type': 'Offer',
+      price: event.price_pence ? (event.price_pence / 100).toFixed(2) : '0',
+      priceCurrency: 'GBP',
+      availability: event.max_capacity && totalGoing >= event.max_capacity
+        ? 'https://schema.org/SoldOut'
+        : 'https://schema.org/InStock',
+      url: `${baseUrl}/events/${event.id}`,
+    },
+    eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
+  }
+
   return (
+    <>
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+    />
     <EventPageClient
       event={{
         id: event.id,
@@ -384,6 +453,10 @@ export default async function EventPage({
       chatIsArchived={chatIsArchived}
       chatIsAdmin={chatIsAdmin}
       chatMutedUntil={chatMutedUntil}
+      initialPlusOnes={allPlusOnes}
+      currentUserPlusOnes={currentUserPlusOnes}
+      plusOneCount={plusOneCount}
     />
+    </>
   )
 }

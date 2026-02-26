@@ -27,30 +27,58 @@ export async function POST(
 
     const body = await request.json().catch(() => null)
     const status = body?.status as string | undefined
+    const rawPlusOnes = (body?.plus_ones as Array<{ name: string; email?: string }> | undefined)
+      ?.filter((p) => p.name?.trim())
 
     if (!status || !['going', 'maybe', 'not_going'].includes(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
+    }
+
+    // Fetch event config for plus-one rules
+    const svcConfig = createServiceClient()
+    const { data: evtConfig } = await svcConfig
+      .from('events')
+      .select('max_capacity, plus_ones_allowed, max_plus_ones_per_member, plus_ones_count_toward_capacity, group_id')
+      .eq('id', eventId)
+      .single()
+
+    const plusOnesAllowed = evtConfig?.plus_ones_allowed ?? true
+    const maxPerMember = evtConfig?.max_plus_ones_per_member ?? 3
+    const plusOnesCountTowardCapacity = evtConfig?.plus_ones_count_toward_capacity ?? true
+
+    // Enforce plus-one rules
+    let plusOnes = rawPlusOnes
+    if (!plusOnesAllowed) {
+      plusOnes = undefined
+    } else if (plusOnes) {
+      plusOnes = plusOnes.slice(0, maxPerMember)
     }
 
     // Capacity check: auto-waitlist if event is full
     let finalStatus = status
     if (status === 'going') {
       const svc = createServiceClient()
-      const { data: evt } = await svc
-        .from('events')
-        .select('max_capacity')
-        .eq('id', eventId)
-        .single()
 
-      if (evt?.max_capacity) {
-        const { count: goingCount } = await svc
-          .from('rsvps')
-          .select('*', { count: 'exact', head: true })
-          .eq('event_id', eventId)
-          .eq('status', 'going')
-          .neq('user_id', user.id)
+      if (evtConfig?.max_capacity) {
+        const [{ count: goingCount }, { count: plusOneCount }] = await Promise.all([
+          svc
+            .from('rsvps')
+            .select('*', { count: 'exact', head: true })
+            .eq('event_id', eventId)
+            .eq('status', 'going')
+            .neq('user_id', user.id),
+          plusOnesCountTowardCapacity
+            ? svc
+                .from('event_plus_ones')
+                .select('*', { count: 'exact', head: true })
+                .eq('event_id', eventId)
+                .neq('user_id', user.id)
+            : Promise.resolve({ count: 0 }),
+        ])
 
-        if ((goingCount ?? 0) >= evt.max_capacity) {
+        const newPlusOneCount = plusOnesCountTowardCapacity ? (plusOnes?.length ?? 0) : 0
+        const totalNeeded = (goingCount ?? 0) + (plusOneCount ?? 0) + 1 + newPlusOneCount
+        if (totalNeeded > evtConfig.max_capacity) {
           finalStatus = 'waitlisted'
         }
       }
@@ -68,6 +96,43 @@ export async function POST(
     if (upsertErr) {
       console.error('[rsvp] upsert error:', upsertErr)
       return NextResponse.json({ error: 'Failed to save RSVP' }, { status: 500 })
+    }
+
+    // Handle plus-ones
+    const svcPlusOne = createServiceClient()
+    if (finalStatus === 'going' && plusOnes && plusOnes.length > 0) {
+      // Delete existing plus-ones for this user+event, then insert new ones
+      await svcPlusOne
+        .from('event_plus_ones')
+        .delete()
+        .eq('event_id', eventId)
+        .eq('user_id', user.id)
+
+      const plusOneRows = plusOnes.map((p) => ({
+        event_id: eventId,
+        user_id: user.id,
+        guest_name: p.name.trim(),
+        guest_email: p.email?.trim() || null,
+      }))
+
+      const { error: plusErr } = await svcPlusOne
+        .from('event_plus_ones')
+        .insert(plusOneRows)
+
+      if (plusErr) {
+        console.error('[rsvp] plus-one insert error:', plusErr)
+      } else if (evtConfig?.group_id) {
+        // Award guest_invite spirit points (fire-and-forget)
+        awardSpiritPoints(user.id, evtConfig.group_id, 'guest_invite', eventId)
+          .catch((err) => console.error('[rsvp] guest_invite spirit points error:', err))
+      }
+    } else if (finalStatus !== 'going') {
+      // Remove plus-ones when not going
+      await svcPlusOne
+        .from('event_plus_ones')
+        .delete()
+        .eq('event_id', eventId)
+        .eq('user_id', user.id)
     }
 
     // Auto-add to channel_members when RSVPing going/maybe (not waitlisted)
@@ -274,7 +339,11 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({ success: true, status: finalStatus })
+    return NextResponse.json({
+      success: true,
+      status: finalStatus,
+      plusOnes: finalStatus === 'going' ? (plusOnes?.length ?? 0) : 0,
+    })
   } catch (err) {
     console.error('[rsvp] unexpected error:', err)
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })

@@ -14,8 +14,10 @@ interface Attendee {
   avatarUrl: string | null
   rsvpStatus: 'going' | 'maybe'
   checkedIn: boolean
-  type: 'member' | 'guest'
-  table: 'rsvps' | 'guest_rsvps'
+  type: 'member' | 'guest' | 'plus_one'
+  table: 'rsvps' | 'guest_rsvps' | 'event_plus_ones'
+  hostUserId: string | null
+  hostName: string | null
 }
 
 interface EventData {
@@ -387,11 +389,35 @@ function ManualList({
     ? attendees.filter((a) => a.name.toLowerCase().includes(search.toLowerCase()))
     : attendees
 
-  // Sort: unchecked first, then checked
-  const sorted = [...filtered].sort((a, b) => {
+  // Sort: unchecked first, then checked. Group plus-ones after their host.
+  const members = filtered.filter((a) => a.type !== 'plus_one')
+  const plusOnesMap = new Map<string, Attendee[]>()
+  for (const a of filtered.filter((a) => a.type === 'plus_one')) {
+    const key = a.hostUserId ?? ''
+    if (!plusOnesMap.has(key)) plusOnesMap.set(key, [])
+    plusOnesMap.get(key)!.push(a)
+  }
+
+  // Sort members, then insert plus-ones after their host
+  const sortedMembers = [...members].sort((a, b) => {
     if (a.checkedIn !== b.checkedIn) return a.checkedIn ? 1 : -1
     return a.name.localeCompare(b.name)
   })
+
+  const sorted: Attendee[] = []
+  for (const m of sortedMembers) {
+    sorted.push(m)
+    const hostPlusOnes = plusOnesMap.get(m.userId ?? '')
+    if (hostPlusOnes) {
+      sorted.push(...hostPlusOnes)
+    }
+  }
+  // Add orphan plus-ones (if host isn't in the filtered list)
+  for (const [key, pones] of plusOnesMap) {
+    if (!sortedMembers.some((m) => m.userId === key)) {
+      sorted.push(...pones)
+    }
+  }
 
   return (
     <div>
@@ -424,13 +450,13 @@ function ManualList({
               key={a.id}
               onClick={() => onToggle(a)}
               disabled={loadingId === a.id}
-              className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-gray-50/50 transition-colors disabled:opacity-50"
+              className={`w-full flex items-center gap-3 py-3.5 text-left hover:bg-gray-50/50 transition-colors disabled:opacity-50 ${a.type === 'plus_one' ? 'pl-10 pr-4' : 'px-4'}`}
             >
               {/* Avatar */}
               <div
-                className="w-10 h-10 rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center"
+                className={`rounded-full flex-shrink-0 overflow-hidden flex items-center justify-center ${a.type === 'plus_one' ? 'w-8 h-8' : 'w-10 h-10'}`}
                 style={{
-                  backgroundColor: a.checkedIn ? '#D1FAE5' : a.type === 'guest' ? '#F3F4F6' : colour + '15',
+                  backgroundColor: a.checkedIn ? '#D1FAE5' : (a.type === 'guest' || a.type === 'plus_one') ? '#F3F4F6' : colour + '15',
                 }}
               >
                 {a.avatarUrl ? (
@@ -439,7 +465,7 @@ function ManualList({
                 ) : (
                   <span
                     className="text-xs font-bold"
-                    style={{ color: a.checkedIn ? '#059669' : a.type === 'guest' ? '#6B7280' : colour }}
+                    style={{ color: a.checkedIn ? '#059669' : (a.type === 'guest' || a.type === 'plus_one') ? '#6B7280' : colour }}
                   >
                     {initials(a.name)}
                   </span>
@@ -449,15 +475,22 @@ function ManualList({
               {/* Name + badges */}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-gray-900 truncate">{a.name}</span>
+                  <span className={`font-semibold text-gray-900 truncate ${a.type === 'plus_one' ? 'text-xs' : 'text-sm'}`}>{a.name}</span>
                   {a.type === 'guest' && (
                     <span className="flex-shrink-0 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">
                       Guest
                     </span>
                   )}
+                  {a.type === 'plus_one' && (
+                    <span className="flex-shrink-0 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600">
+                      +1
+                    </span>
+                  )}
                 </div>
                 <span className="text-xs text-gray-400">
-                  {a.rsvpStatus === 'going' ? 'Going' : 'Maybe'}
+                  {a.type === 'plus_one'
+                    ? `Guest of ${a.hostName ?? 'member'}`
+                    : a.rsvpStatus === 'going' ? 'Going' : 'Maybe'}
                 </span>
               </div>
 
@@ -466,13 +499,13 @@ function ManualList({
                 {loadingId === a.id ? (
                   <Spinner />
                 ) : a.checkedIn ? (
-                  <div className="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center">
+                  <div className={`rounded-full bg-emerald-500 flex items-center justify-center ${a.type === 'plus_one' ? 'w-7 h-7' : 'w-8 h-8'}`}>
                     <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
                     </svg>
                   </div>
                 ) : (
-                  <div className="w-8 h-8 rounded-full border-2 border-gray-200" />
+                  <div className={`rounded-full border-2 border-gray-200 ${a.type === 'plus_one' ? 'w-7 h-7' : 'w-8 h-8'}`} />
                 )}
               </div>
             </button>

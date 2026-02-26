@@ -7,6 +7,7 @@ import dynamic from 'next/dynamic'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import ContactOrganiserModal from '@/components/ContactOrganiserModal'
+import FlyerActions from '@/components/events/FlyerActions'
 import type { ChatMessage, ChatMember } from '@/components/GroupChat'
 
 const SharedCostTicker = dynamic(() => import('@/components/events/SharedCostTicker'), { ssr: false })
@@ -75,6 +76,13 @@ interface GuestRsvp {
   createdAt: string
 }
 
+interface PlusOneData {
+  id: string
+  guestName: string
+  userId: string
+  hostName: string
+}
+
 type RsvpStatus = 'idle' | 'loading' | 'going' | 'maybe' | 'not_going' | 'error'
 type GuestRsvpStatus = 'idle' | 'loading' | 'done' | 'already_rsvped' | 'error'
 
@@ -109,6 +117,9 @@ interface Props {
   chatIsArchived: boolean
   chatIsAdmin: boolean
   chatMutedUntil: string | null
+  initialPlusOnes: PlusOneData[]
+  currentUserPlusOnes: Array<{ name: string; email?: string }>
+  plusOneCount: number
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -269,11 +280,13 @@ function InfoBar({
   colour,
   goingCount,
   guestCount,
+  plusOneCount,
 }: {
   event: EventData
   colour: string
   goingCount: number
   guestCount: number
+  plusOneCount: number
 }) {
   const startDate = new Date(event.startsAt)
   const endDate = new Date(event.endsAt)
@@ -303,13 +316,17 @@ function InfoBar({
           <div className="flex items-center gap-2 text-sm text-gray-700">
             <UsersIcon />
             <span>
-              {guestCount > 0 ? (
+              {guestCount > 0 || plusOneCount > 0 ? (
                 <>
                   <strong className="text-gray-900">{goingCount}</strong>
                   {goingCount === 1 ? ' member' : ' members'}
-                  <span className="text-gray-400"> + </span>
-                  <strong className="text-gray-900">{guestCount}</strong>
-                  {guestCount === 1 ? ' guest' : ' guests'}
+                  {(guestCount + plusOneCount) > 0 && (
+                    <>
+                      <span className="text-gray-400"> + </span>
+                      <strong className="text-gray-900">{guestCount + plusOneCount}</strong>
+                      {(guestCount + plusOneCount) === 1 ? ' guest' : ' guests'}
+                    </>
+                  )}
                 </>
               ) : (
                 <>
@@ -323,7 +340,7 @@ function InfoBar({
           </div>
 
           {(() => {
-            const totalCount = goingCount + guestCount
+            const totalCount = goingCount + guestCount + plusOneCount
             const badge =
               event.paymentType === 'fixed' && event.pricePence
                 ? { bg: '#D97706', label: `\u00a3${(event.pricePence / 100).toFixed(2)}` }
@@ -348,13 +365,13 @@ function InfoBar({
               <div
                 className="h-full rounded-full transition-all duration-500"
                 style={{
-                  width: `${Math.min(((goingCount + guestCount) / event.maxCapacity) * 100, 100)}%`,
+                  width: `${Math.min(((goingCount + guestCount + plusOneCount) / event.maxCapacity) * 100, 100)}%`,
                   backgroundColor: colour,
                 }}
               />
             </div>
             <p className="text-xs text-gray-400 mt-1">
-              {Math.max(event.maxCapacity - goingCount - guestCount, 0)} spot{event.maxCapacity - goingCount - guestCount !== 1 ? 's' : ''} remaining
+              {Math.max(event.maxCapacity - goingCount - guestCount - plusOneCount, 0)} spot{event.maxCapacity - goingCount - guestCount - plusOneCount !== 1 ? 's' : ''} remaining
             </p>
           </div>
         )}
@@ -368,18 +385,22 @@ function InfoBar({
 function SocialSnowball({
   memberRsvps,
   guestRsvps,
+  plusOnes,
   goingCount,
   maybeCount,
   notGoingCount,
   guestCount,
+  plusOneCount,
   colour,
 }: {
   memberRsvps: MemberRsvp[]
   guestRsvps: GuestRsvp[]
+  plusOnes: PlusOneData[]
   goingCount: number
   maybeCount: number
   notGoingCount: number
   guestCount: number
+  plusOneCount: number
   colour: string
 }) {
   const maxVisible = 5
@@ -396,9 +417,15 @@ function SocialSnowball({
       avatarUrl: null as string | null,
       isGuest: true,
     })),
+    ...plusOnes.map((p) => ({
+      id: p.id,
+      name: `${p.guestName} (+1 of ${p.hostName.split(' ')[0]})`,
+      avatarUrl: null as string | null,
+      isGuest: true,
+    })),
   ]
   const visible = allRsvps.slice(0, maxVisible)
-  const totalGoing = goingCount + guestCount
+  const totalGoing = goingCount + guestCount + plusOneCount
   const overflow = Math.max(totalGoing - maxVisible, 0)
 
   // Track previously seen IDs for animation
@@ -877,6 +904,138 @@ function RsvpCard({
   )
 }
 
+// ─── Plus-One Section ────────────────────────────────────────────────────────
+
+function PlusOneSection({
+  colour,
+  guests,
+  onGuestsChange,
+  showFields,
+  onToggleShow,
+  onSave,
+  saving,
+}: {
+  colour: string
+  guests: Array<{ name: string; email: string }>
+  onGuestsChange: (guests: Array<{ name: string; email: string }>) => void
+  showFields: boolean
+  onToggleShow: () => void
+  onSave: () => void
+  saving: boolean
+}) {
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <button
+        type="button"
+        onClick={onToggleShow}
+        className="w-full flex items-center justify-between"
+      >
+        <div className="flex items-center gap-2">
+          <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 9.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
+          </svg>
+          <span className="text-sm font-semibold text-gray-700">Bringing guests?</span>
+          {guests.some((g) => g.name.trim()) && !showFields && (
+            <span className="text-xs font-medium text-gray-400">
+              ({guests.filter((g) => g.name.trim()).length} added)
+            </span>
+          )}
+        </div>
+        <div
+          role="switch"
+          aria-checked={showFields}
+          className={`relative w-10 h-6 rounded-full transition-colors ${showFields ? '' : 'bg-gray-200'}`}
+          style={showFields ? { backgroundColor: colour } : {}}
+        >
+          <div
+            className="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform"
+            style={{ transform: showFields ? 'translateX(18px)' : 'translateX(2px)' }}
+          />
+        </div>
+      </button>
+
+      {showFields && (
+        <div className="mt-4 space-y-3">
+          <p className="text-xs text-gray-400">Add up to 3 guests. They&apos;ll appear on the attendee list.</p>
+
+          {guests.map((g, i) => (
+            <div key={i} className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={g.name}
+                  onChange={(e) => {
+                    const updated = [...guests]
+                    updated[i] = { ...updated[i], name: e.target.value }
+                    onGuestsChange(updated)
+                  }}
+                  placeholder={`Guest ${i + 1} name`}
+                  className="flex-1 px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition"
+                  style={{ '--tw-ring-color': colour } as React.CSSProperties}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const updated = guests.filter((_, idx) => idx !== i)
+                    onGuestsChange(updated.length === 0 ? [{ name: '', email: '' }] : updated)
+                  }}
+                  className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              {g.name.trim() && (
+                <input
+                  type="email"
+                  value={g.email}
+                  onChange={(e) => {
+                    const updated = [...guests]
+                    updated[i] = { ...updated[i], email: e.target.value }
+                    onGuestsChange(updated)
+                  }}
+                  placeholder="Email (optional — they'll get event details)"
+                  className="w-full px-3.5 py-2 rounded-xl border border-gray-100 bg-gray-50 text-sm text-gray-700 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition"
+                  style={{ '--tw-ring-color': colour } as React.CSSProperties}
+                />
+              )}
+            </div>
+          ))}
+
+          {guests.length < 3 && (
+            <button
+              type="button"
+              onClick={() => onGuestsChange([...guests, { name: '', email: '' }])}
+              className="flex items-center gap-1.5 text-sm font-medium transition-colors hover:opacity-80"
+              style={{ color: colour }}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              Add another guest
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            className="w-full py-2.5 rounded-xl text-white font-semibold text-sm transition-opacity hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+            style={{ backgroundColor: colour }}
+          >
+            {saving ? (
+              <><Spinner /> Saving&hellip;</>
+            ) : (
+              'Save guests'
+            )}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Share Button ────────────────────────────────────────────────────────────
 
 function ShareButton({ eventId, title, colour }: { eventId: string; title: string; colour: string }) {
@@ -931,6 +1090,9 @@ export default function EventPageClient({
   chatIsArchived,
   chatIsAdmin,
   chatMutedUntil,
+  initialPlusOnes,
+  currentUserPlusOnes,
+  plusOneCount: initialPlusOneCount,
 }: Props) {
   const router = useRouter()
   const colour = hex(group.primaryColour)
@@ -943,7 +1105,8 @@ export default function EventPageClient({
   const [maybeCount, setMaybeCount] = useState(memberMaybeCount)
   const [notGoingCount, setNotGoingCount] = useState(memberNotGoingCount)
   const [guestCount, setGuestCount] = useState(guestGoingCount)
-  const totalGoing = goingCount + guestCount
+  const [plusOneCountState, setPlusOneCountState] = useState(initialPlusOneCount)
+  const totalGoing = goingCount + guestCount + plusOneCountState
   const isFull = event.maxCapacity ? totalGoing >= event.maxCapacity : false
 
   // Ref for accessing current memberRsvps inside realtime callbacks
@@ -965,6 +1128,16 @@ export default function EventPageClient({
   const [guestError, setGuestError] = useState('')
   const [guestFieldErrors, setGuestFieldErrors] = useState<{ firstName?: string; lastName?: string; email?: string }>({})
   const [contactModalOpen, setContactModalOpen] = useState(false)
+
+  // Plus-one state
+  const [plusOnes, setPlusOnes] = useState<PlusOneData[]>(initialPlusOnes)
+  const [myGuests, setMyGuests] = useState<Array<{ name: string; email: string }>>(
+    currentUserPlusOnes.length > 0
+      ? currentUserPlusOnes.map((p) => ({ name: p.name, email: p.email ?? '' }))
+      : [{ name: '', email: '' }]
+  )
+  const [showGuestFields, setShowGuestFields] = useState(currentUserPlusOnes.length > 0)
+  const [guestSaving, setGuestSaving] = useState(false)
 
   // ── Payment success handler ───────────────────────────────────────────────
 
@@ -1264,6 +1437,74 @@ export default function EventPageClient({
     }
   }
 
+  // ── Plus-one save handler ──────────────────────────────────────────────────
+
+  async function handleSavePlusOnes() {
+    if (!currentUser) return
+    setGuestSaving(true)
+
+    const validGuests = myGuests.filter((g) => g.name.trim())
+
+    try {
+      const res = await fetch(`/api/events/${event.id}/rsvp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'going',
+          plus_ones: validGuests.map((g) => ({
+            name: g.name.trim(),
+            email: g.email.trim() || undefined,
+          })),
+        }),
+      })
+
+      if (res.ok) {
+        // Update plus-one list optimistically
+        const oldMyPlusOnes = plusOnes.filter((p) => p.userId === currentUser.id)
+        const newPlusOnes = validGuests.map((g, i) => ({
+          id: `po-${Date.now()}-${i}`,
+          guestName: g.name.trim(),
+          userId: currentUser.id,
+          hostName: currentUser.fullName,
+        }))
+
+        setPlusOnes((prev) => [
+          ...prev.filter((p) => p.userId !== currentUser.id),
+          ...newPlusOnes,
+        ])
+        setPlusOneCountState((prev) => prev - oldMyPlusOnes.length + newPlusOnes.length)
+      }
+    } catch (err) {
+      console.error('[plus-ones] save error:', err)
+    }
+
+    setGuestSaving(false)
+  }
+
+  function handleTogglePlusOnes() {
+    if (showGuestFields) {
+      // Toggling off — clear plus-ones
+      setShowGuestFields(false)
+      if (myGuests.some((g) => g.name.trim())) {
+        // Remove plus-ones by saving empty list
+        setMyGuests([{ name: '', email: '' }])
+        const oldCount = plusOnes.filter((p) => p.userId === currentUser?.id).length
+        if (oldCount > 0) {
+          fetch(`/api/events/${event.id}/rsvp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'going', plus_ones: [] }),
+          }).catch((err) => console.error('[plus-ones] remove error:', err))
+
+          setPlusOnes((prev) => prev.filter((p) => p.userId !== currentUser?.id))
+          setPlusOneCountState((prev) => Math.max(prev - oldCount, 0))
+        }
+      }
+    } else {
+      setShowGuestFields(true)
+    }
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -1272,7 +1513,7 @@ export default function EventPageClient({
       <Hero event={event} group={group} colour={colour} organiser={organiser} />
 
       {/* Info bar */}
-      <InfoBar event={event} colour={colour} goingCount={goingCount} guestCount={guestCount} />
+      <InfoBar event={event} colour={colour} goingCount={goingCount} guestCount={guestCount} plusOneCount={plusOneCountState} />
 
       {/* Main content */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-10 py-8">
@@ -1302,6 +1543,15 @@ export default function EventPageClient({
                 </svg>
                 Contact organiser
               </button>
+            )}
+
+            {/* Event Flyer — pre-event only */}
+            {currentUser && new Date() < new Date(event.startsAt) && (
+              <FlyerActions
+                eventId={event.id}
+                eventTitle={event.title}
+                colour={colour}
+              />
             )}
 
             {/* Shared Cost Ticker — mobile only */}
@@ -1344,15 +1594,32 @@ export default function EventPageClient({
               />
             </div>
 
+            {/* Plus-One Section — mobile only */}
+            {currentUser && rsvpStatus === 'going' && event.paymentType !== 'fixed' && (
+              <div className="lg:hidden">
+                <PlusOneSection
+                  colour={colour}
+                  guests={myGuests}
+                  onGuestsChange={setMyGuests}
+                  showFields={showGuestFields}
+                  onToggleShow={handleTogglePlusOnes}
+                  onSave={handleSavePlusOnes}
+                  saving={guestSaving}
+                />
+              </div>
+            )}
+
             {/* Social Snowball — mobile only (shows in sidebar on desktop) */}
             <div className="lg:hidden">
               <SocialSnowball
                 memberRsvps={memberRsvps}
                 guestRsvps={guestRsvps}
+                plusOnes={plusOnes}
                 goingCount={goingCount}
                 maybeCount={maybeCount}
                 notGoingCount={notGoingCount}
                 guestCount={guestCount}
+                plusOneCount={plusOneCountState}
                 colour={colour}
               />
             </div>
@@ -1426,13 +1693,26 @@ export default function EventPageClient({
               guestError={guestError}
               guestFieldErrors={guestFieldErrors}
             />
+            {currentUser && rsvpStatus === 'going' && event.paymentType !== 'fixed' && (
+              <PlusOneSection
+                colour={colour}
+                guests={myGuests}
+                onGuestsChange={setMyGuests}
+                showFields={showGuestFields}
+                onToggleShow={handleTogglePlusOnes}
+                onSave={handleSavePlusOnes}
+                saving={guestSaving}
+              />
+            )}
             <SocialSnowball
               memberRsvps={memberRsvps}
               guestRsvps={guestRsvps}
+              plusOnes={plusOnes}
               goingCount={goingCount}
               maybeCount={maybeCount}
               notGoingCount={notGoingCount}
               guestCount={guestCount}
+              plusOneCount={plusOneCountState}
               colour={colour}
             />
             <ShareButton eventId={event.id} title={event.title} colour={colour} />

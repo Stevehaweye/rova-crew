@@ -571,7 +571,16 @@ export default function DMChat({
                   </div>
                 )}
 
-                {!isDeleted && (
+                {/* System messages (introductions) */}
+                {!isDeleted && msg.contentType === 'system' && (
+                  <div className="flex justify-center my-4">
+                    <div className="max-w-[85%] px-4 py-2.5 rounded-xl bg-teal-50 border border-teal-100 text-center">
+                      <p className="text-xs text-teal-700 italic leading-relaxed">{msg.content}</p>
+                    </div>
+                  </div>
+                )}
+
+                {!isDeleted && msg.contentType !== 'system' && (
                   <div
                     id={`msg-${msg.id}`}
                     className={`flex ${isOwn ? 'justify-end' : 'justify-start'} ${showMeta ? 'mt-3' : 'mt-0.5'} group/msg transition-colors rounded-lg`}

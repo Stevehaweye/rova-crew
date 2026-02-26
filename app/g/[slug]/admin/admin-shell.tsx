@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { InviteModal } from './invite-modal'
+import IntroductionCard from '@/components/admin/IntroductionCard'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -417,7 +418,7 @@ function WelcomeBanner({
 const NAV_ITEMS = [
   { icon: '📊', label: 'Dashboard',      key: 'dashboard',     available: true  },
   { icon: '📅', label: 'Events',         key: 'events',        available: true  },
-  { icon: '👥', label: 'Members',        key: 'members',       available: false },
+  { icon: '👥', label: 'Members',        key: 'members',       available: true  },
   { icon: '📣', label: 'Announcements',  key: 'announcements', available: true  },
   { icon: '💬', label: 'Chat',           key: 'chat',          available: true  },
   { icon: '📢', label: 'Blast',          key: 'blast',         available: true  },
@@ -429,6 +430,7 @@ const NAV_ITEMS = [
 const NAV_ROUTES: Record<string, (slug: string) => string> = {
   dashboard: (slug) => `/g/${slug}/admin`,
   events: (slug) => `/g/${slug}/admin/events`,
+  members: (slug) => `/g/${slug}/admin/members`,
   announcements: (slug) => `/g/${slug}/admin/announcements`,
   chat: (slug) => `/g/${slug}/chat`,
   blast: (slug) => `/g/${slug}/admin/blast`,
@@ -1075,6 +1077,26 @@ export default function AdminShell({
                 </div>
               )}
             </div>
+
+            {/* ── At-Risk Members Alert ──────────────────────────────── */}
+            <Link
+              href={`/g/${group.slug}/admin/members?filter=at_risk`}
+              className="flex items-center gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 hover:bg-amber-100 transition-colors"
+            >
+              <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0 text-lg">
+                ⚠️
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-amber-900">Member Insights</p>
+                <p className="text-xs text-amber-700 mt-0.5">View at-risk members and send nudges to re-engage them.</p>
+              </div>
+              <svg className="w-5 h-5 text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+              </svg>
+            </Link>
+
+            {/* ── Warm Introductions ──────────────────────────────────── */}
+            <IntroductionCard slug={group.slug} colour={colour} />
 
             {/* ── Row 4: Recent Members ──────────────────────────────── */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">

@@ -49,8 +49,8 @@ export default async function CheckinPage({
 
   if (!event) redirect(`/g/${slug}/admin/events`)
 
-  // Fetch all RSVPs (members + guests) for this event
-  const [memberRsvpsResult, guestRsvpsResult] = await Promise.all([
+  // Fetch all RSVPs (members + guests + plus-ones) for this event
+  const [memberRsvpsResult, guestRsvpsResult, plusOnesResult] = await Promise.all([
     supabase
       .from('rsvps')
       .select('id, user_id, status, checked_in_at, profiles ( full_name, avatar_url )')
@@ -63,6 +63,12 @@ export default async function CheckinPage({
       .select('id, first_name, last_name, status, checked_in_at, qr_token')
       .eq('event_id', eventId)
       .in('status', ['confirmed', 'attended'])
+      .order('created_at', { ascending: true }),
+
+    supabase
+      .from('event_plus_ones')
+      .select('id, user_id, guest_name, checked_in, profiles:user_id ( full_name )')
+      .eq('event_id', eventId)
       .order('created_at', { ascending: true }),
   ])
 
@@ -93,7 +99,27 @@ export default async function CheckinPage({
     checkedIn: !!r.checked_in_at,
     type: 'guest' as const,
     table: 'guest_rsvps' as const,
+    hostUserId: null as string | null,
+    hostName: null as string | null,
   }))
+
+  const plusOneAttendees = (plusOnesResult.data ?? []).map((r) => {
+    const hostProfile = r.profiles as unknown as { full_name: string } | null
+    // Find the host member attendee to nest under
+    const hostMember = memberAttendees.find((m) => m.userId === r.user_id)
+    return {
+      id: r.id,
+      userId: null as string | null,
+      name: r.guest_name,
+      avatarUrl: null as string | null,
+      rsvpStatus: 'going' as const,
+      checkedIn: !!r.checked_in,
+      type: 'plus_one' as const,
+      table: 'event_plus_ones' as const,
+      hostUserId: r.user_id,
+      hostName: hostMember?.name ?? hostProfile?.full_name ?? 'Member',
+    }
+  })
 
   return (
     <CheckinClient
@@ -106,7 +132,7 @@ export default async function CheckinPage({
       groupSlug={group.slug}
       groupName={group.name}
       colour={colour}
-      attendees={[...memberAttendees, ...guestAttendees]}
+      attendees={[...memberAttendees.map((a) => ({ ...a, hostUserId: null as string | null, hostName: null as string | null })), ...guestAttendees, ...plusOneAttendees]}
     />
   )
 }
