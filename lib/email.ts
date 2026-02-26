@@ -473,6 +473,135 @@ export async function sendGuestConversionEmail({
   }
 }
 
+// ─── Join Request Notification (to admin) ───────────────────────────────────
+
+interface JoinRequestEmailParams {
+  adminEmail: string
+  adminName: string
+  memberName: string
+  memberEmail: string
+  groupName: string
+  groupSlug: string
+}
+
+export async function sendJoinRequestEmail({
+  adminEmail,
+  adminName,
+  memberName,
+  memberEmail,
+  groupName,
+  groupSlug,
+}: JoinRequestEmailParams): Promise<{ success: true } | { success: false; error: string }> {
+  const firstName = adminName.split(' ')[0]
+  const reviewUrl = `${process.env.NEXT_PUBLIC_APP_URL}/g/${groupSlug}/admin/members?tab=pending`
+
+  const content = `
+    <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#111827;line-height:1.3;">
+      New join request
+    </h1>
+    <p style="margin:0 0 20px;font-size:15px;color:#6b7280;line-height:1.6;">
+      Hey ${firstName}, <strong style="color:#111827;">${memberName}</strong> wants to join <strong style="color:#111827;">${groupName}</strong>.
+    </p>
+
+    ${infoBox([
+      { label: 'Name', value: memberName },
+      { label: 'Email', value: memberEmail },
+      { label: 'Group', value: groupName },
+    ])}
+
+    <p style="margin:24px 0 0;font-size:14px;color:#6b7280;line-height:1.6;">
+      Review their request in your admin panel.
+    </p>
+
+    ${ctaButton('Review Request \\u2192', reviewUrl)}
+  `
+
+  try {
+    const { error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: adminEmail,
+      subject: `${memberName} wants to join ${groupName}`,
+      html: emailLayout(content),
+    })
+
+    if (error) {
+      console.error('[email] join request error:', error)
+      return { success: false, error: error.message }
+    }
+
+    return { success: true }
+  } catch (err) {
+    const message =
+      err && typeof err === 'object' && 'message' in err
+        ? (err as { message: string }).message
+        : 'Failed to send email'
+    console.error('[email] join request error:', err)
+    return { success: false, error: message }
+  }
+}
+
+// ─── Member Approved Notification ───────────────────────────────────────────
+
+interface MemberApprovedEmailParams {
+  memberEmail: string
+  memberName: string
+  groupName: string
+  groupSlug: string
+}
+
+export async function sendMemberApprovedEmail({
+  memberEmail,
+  memberName,
+  groupName,
+  groupSlug,
+}: MemberApprovedEmailParams): Promise<{ success: true } | { success: false; error: string }> {
+  const firstName = memberName.split(' ')[0]
+  const groupUrl = `${process.env.NEXT_PUBLIC_APP_URL}/g/${groupSlug}`
+
+  const content = `
+    <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#111827;line-height:1.3;">
+      You&rsquo;re in! Welcome to ${groupName}
+    </h1>
+    <p style="margin:0 0 20px;font-size:15px;color:#6b7280;line-height:1.6;">
+      Hey ${firstName}, great news &mdash; your request to join <strong style="color:#111827;">${groupName}</strong> has been approved.
+    </p>
+
+    <p style="margin:0 0 4px;font-size:14px;color:#6b7280;line-height:1.6;">
+      You can now:
+    </p>
+    <ul style="margin:12px 0 0;padding-left:20px;font-size:14px;color:#374151;line-height:2;">
+      <li>RSVP to upcoming events</li>
+      <li>Chat with other members</li>
+      <li>Earn spirit points and climb the leaderboard</li>
+    </ul>
+
+    ${ctaButton('Go to ' + groupName + ' \\u2192', groupUrl)}
+  `
+
+  try {
+    const { error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: memberEmail,
+      subject: `Welcome to ${groupName}!`,
+      html: emailLayout(content),
+    })
+
+    if (error) {
+      console.error('[email] member approved error:', error)
+      return { success: false, error: error.message }
+    }
+
+    return { success: true }
+  } catch (err) {
+    const message =
+      err && typeof err === 'object' && 'message' in err
+        ? (err as { message: string }).message
+        : 'Failed to send email'
+    console.error('[email] member approved error:', err)
+    return { success: false, error: message }
+  }
+}
+
 // ─── 3. Contact Organiser ────────────────────────────────────────────────────
 
 interface ContactOrganiserParams {

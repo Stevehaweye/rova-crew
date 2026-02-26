@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -154,63 +153,48 @@ export function JoinCard({
       return
     }
 
-    // Free group — direct join
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    // Free group — join via API route (bypasses RLS, sends admin notification)
+    try {
+      const res = await fetch(`/api/groups/${groupSlug}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inviteToken }),
+      })
 
-    if (!user) {
-      router.push(`/auth?next=/g/${groupSlug}`)
-      return
-    }
+      const data = await res.json()
 
-    const newStatus = requireApproval ? 'pending' : 'approved'
-
-    const { error: memberErr } = await supabase
-      .from('group_members')
-      .upsert(
-        { group_id: groupId, user_id: user.id, role: 'member', status: newStatus },
-        { onConflict: 'group_id,user_id' }
-      )
-
-    if (memberErr) {
-      setStatus('error')
-      setErrorMsg(memberErr.message)
-      return
-    }
-
-    if (newStatus === 'approved') {
-      await supabase
-        .from('member_stats')
-        .upsert(
-          { user_id: user.id, group_id: groupId },
-          { onConflict: 'user_id,group_id' }
-        )
-      setLocalCount((c) => c + 1)
-      setStatus('joined')
-
-      // Fire-and-forget: accept invite token if present
-      if (inviteToken) {
-        fetch(`/api/groups/${groupSlug}/invites/accept`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: inviteToken }),
-        }).catch(() => {})
+      if (!res.ok) {
+        if (res.status === 401) {
+          router.push(`/auth?next=/g/${groupSlug}`)
+          return
+        }
+        setStatus('error')
+        setErrorMsg(data.error || 'Failed to join group')
+        return
       }
 
-      // Fire-and-forget: check if this member was a guest who converted
-      fetch(`/api/groups/${groupSlug}/check-guest-conversion`, { method: 'POST' })
-        .catch(() => {})
+      if (data.status === 'approved') {
+        setLocalCount((c) => c + 1)
+        setStatus('joined')
 
-      // Fire-and-forget: recalculate group health score
-      fetch(`/api/groups/${groupSlug}/health-score-recalc`, { method: 'POST' })
-        .catch(() => {})
+        // Fire-and-forget: check if this member was a guest who converted
+        fetch(`/api/groups/${groupSlug}/check-guest-conversion`, { method: 'POST' })
+          .catch(() => {})
 
-      // Redirect to welcome page after a brief delay to show success state
-      setTimeout(() => {
-        router.push(`/g/${groupSlug}/welcome`)
-      }, 800)
-    } else {
-      setStatus('pending')
+        // Fire-and-forget: recalculate group health score
+        fetch(`/api/groups/${groupSlug}/health-score-recalc`, { method: 'POST' })
+          .catch(() => {})
+
+        // Redirect to welcome page after a brief delay to show success state
+        setTimeout(() => {
+          router.push(`/g/${groupSlug}/welcome`)
+        }, 800)
+      } else {
+        setStatus('pending')
+      }
+    } catch {
+      setStatus('error')
+      setErrorMsg('Network error. Please try again.')
     }
   }
 

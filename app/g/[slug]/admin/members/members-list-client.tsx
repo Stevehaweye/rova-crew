@@ -26,9 +26,18 @@ interface Member {
   lastActive: string | null
 }
 
+interface PendingMember {
+  userId: string
+  fullName: string
+  avatarUrl: string | null
+  email: string | null
+  requestedAt: string
+}
+
 interface MembersListClientProps {
   group: Group
   members: Member[]
+  pendingMembers?: PendingMember[]
 }
 
 // ─── Tier Config ────────────────────────────────────────────────────────────
@@ -168,12 +177,16 @@ function ChevronRightIcon() {
 
 // ─── Main Component ─────────────────────────────────────────────────────────
 
-export default function MembersListClient({ group, members }: MembersListClientProps) {
+export default function MembersListClient({ group, members, pendingMembers = [] }: MembersListClientProps) {
   const router = useRouter()
   const colour = hex(group.primaryColour)
   const [filterTab, setFilterTab] = useState<FilterTab>('all')
   const [sortKey, setSortKey] = useState<SortKey>('most_active')
   const [search, setSearch] = useState('')
+  const [showPending, setShowPending] = useState(false)
+  const [pendingList, setPendingList] = useState(pendingMembers)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
 
   const filteredMembers = useMemo(() => {
     let result = filterMembers(members, filterTab)
@@ -197,8 +210,40 @@ export default function MembersListClient({ group, members }: MembersListClientP
     return { all, active, at_risk: atRisk, inactive }
   }, [members])
 
+  async function handleMemberAction(userId: string, action: 'approved' | 'blocked') {
+    setActionLoading(userId)
+    try {
+      const res = await fetch(`/api/groups/${group.slug}/members/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: action }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        setToast(data.error || 'Failed to update member')
+        setActionLoading(null)
+        return
+      }
+
+      setPendingList((prev) => prev.filter((m) => m.userId !== userId))
+      setToast(action === 'approved' ? 'Member approved' : 'Request declined')
+      setTimeout(() => setToast(null), 4000)
+    } catch {
+      setToast('Network error. Please try again.')
+    }
+    setActionLoading(null)
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Toast */}
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl bg-[#0D7377] text-white text-sm font-semibold shadow-lg animate-in fade-in slide-in-from-top-2">
+          {toast}
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white border-b border-gray-100">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
@@ -221,6 +266,85 @@ export default function MembersListClient({ group, members }: MembersListClientP
       </div>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-4">
+        {/* Members / Pending toggle */}
+        {pendingList.length > 0 && (
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+            <button
+              onClick={() => setShowPending(false)}
+              className={`flex-1 text-sm font-semibold py-2.5 px-3 rounded-lg transition-all ${
+                !showPending ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Members
+              <span className="ml-1.5 text-xs text-gray-400">{members.length}</span>
+            </button>
+            <button
+              onClick={() => setShowPending(true)}
+              className={`flex-1 text-sm font-semibold py-2.5 px-3 rounded-lg transition-all relative ${
+                showPending ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Pending
+              <span className="ml-1.5 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700">
+                {pendingList.length}
+              </span>
+            </button>
+          </div>
+        )}
+
+        {showPending && pendingList.length > 0 ? (
+          /* Pending Members List */
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="divide-y divide-gray-50">
+              {pendingList.map((pm) => (
+                <div key={pm.userId} className="flex items-center gap-3 px-4 sm:px-5 py-4">
+                  {/* Avatar */}
+                  {pm.avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={pm.avatarUrl} alt={pm.fullName} className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
+                  ) : (
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+                      style={{ backgroundColor: colour }}
+                    >
+                      {initials(pm.fullName)}
+                    </div>
+                  )}
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{pm.fullName}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {pm.email || 'No email'}
+                      {' \u00B7 '}
+                      Requested {formatDate(pm.requestedAt)}
+                    </p>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => handleMemberAction(pm.userId, 'approved')}
+                      disabled={actionLoading === pm.userId}
+                      className="px-3.5 py-2 rounded-lg text-xs font-bold text-white transition-all hover:shadow-md disabled:opacity-50"
+                      style={{ backgroundColor: '#0D7377' }}
+                    >
+                      {actionLoading === pm.userId ? 'Saving\u2026' : 'Approve'}
+                    </button>
+                    <button
+                      onClick={() => handleMemberAction(pm.userId, 'blocked')}
+                      disabled={actionLoading === pm.userId}
+                      className="px-3.5 py-2 rounded-lg text-xs font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 transition-all disabled:opacity-50"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+        <>
         {/* Filter Tabs */}
         <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
           {FILTER_TABS.map((tab) => (
@@ -371,6 +495,8 @@ export default function MembersListClient({ group, members }: MembersListClientP
             </div>
           )}
         </div>
+        </>
+        )}
       </div>
     </div>
   )

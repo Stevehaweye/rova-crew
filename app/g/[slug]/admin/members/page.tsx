@@ -44,6 +44,14 @@ export default async function AdminMembersPage({
     .eq('status', 'approved')
     .order('joined_at', { ascending: true })
 
+  // Fetch pending members
+  const { data: pendingRaw } = await svc
+    .from('group_members')
+    .select('user_id, role, joined_at, profiles ( full_name, avatar_url, email )')
+    .eq('group_id', group.id)
+    .eq('status', 'pending')
+    .order('joined_at', { ascending: true })
+
   const userIds = (membersRaw ?? []).map((m) => m.user_id)
 
   // Fetch stats and last activity in parallel
@@ -125,6 +133,21 @@ export default async function AdminMembersPage({
     }
   })
 
+  const pendingMembers = (pendingRaw ?? []).map((m) => {
+    const profile = m.profiles as unknown as {
+      full_name: string
+      avatar_url: string | null
+      email: string | null
+    }
+    return {
+      userId: m.user_id,
+      fullName: profile?.full_name ?? 'Member',
+      avatarUrl: profile?.avatar_url ?? null,
+      email: profile?.email ?? null,
+      requestedAt: m.joined_at,
+    }
+  })
+
   return (
     <MembersListClient
       group={{
@@ -134,6 +157,7 @@ export default async function AdminMembersPage({
         primaryColour: group.primary_colour,
       }}
       members={members}
+      pendingMembers={pendingMembers}
     />
   )
 }
