@@ -33,32 +33,32 @@ const INTERESTS = [
   { label: 'Other', emoji: '✨' },
 ]
 
-const PLACEHOLDER_GROUPS = [
-  {
-    id: 1,
-    name: 'London Running Crew',
-    tagline: 'Weekly runs across the city',
-    members: 124,
-    category: 'Running',
-    colour: '#0D7377',
-  },
-  {
-    id: 2,
-    name: 'South Coast Cyclists',
-    tagline: 'Coastal rides every weekend',
-    members: 89,
-    category: 'Cycling',
-    colour: '#C9982A',
-  },
-  {
-    id: 3,
-    name: 'Weekend Hikers UK',
-    tagline: 'Exploring trails near you',
-    members: 67,
-    category: 'Walking & Hiking',
-    colour: '#2A7C9A',
-  },
-]
+/** Map onboarding interest labels → group category values */
+const INTEREST_TO_CATEGORY: Record<string, string> = {
+  'Running': 'Running',
+  'Cycling': 'Cycling',
+  'Walking & Hiking': 'Walking',
+  'Yoga & Fitness': 'Yoga',
+  'Football & Sport': 'Football',
+  'Book Club': 'Book Club',
+  'Social & Supper Club': 'Social',
+  'Photography': 'Photography',
+  'Volunteering': 'Volunteer',
+  'Dog Walking': 'Dog Walking',
+  'Knitting & Crafts': 'Knitting',
+  'Music': 'Other',
+  'Other': 'Other',
+}
+
+interface SuggestedGroup {
+  id: string
+  name: string
+  slug: string
+  tagline: string | null
+  category: string
+  primaryColour: string
+  memberCount: number
+}
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
@@ -281,60 +281,73 @@ function Step2Interests({ data, onToggle, onContinue }: Step2Props) {
 // ─── Step 3: Find Your Crew ───────────────────────────────────────────────────
 
 interface Step3Props {
+  groups: SuggestedGroup[]
+  groupsLoading: boolean
   loading: boolean
   onFinish: () => void
   onSkip: () => void
 }
 
-function Step3Groups({ loading, onFinish, onSkip }: Step3Props) {
+function Step3Groups({ groups, groupsLoading, loading, onFinish, onSkip }: Step3Props) {
   return (
     <div className="px-5 pt-2 pb-10">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Groups waiting for you</h1>
-      <p className="text-gray-500 text-sm mb-7">Join a crew or explore later</p>
+      <h1 className="text-2xl font-bold text-gray-900 mb-1">Groups you might like</h1>
+      <p className="text-gray-500 text-sm mb-7">Based on your interests</p>
 
       {/* Group cards */}
       <div className="space-y-3 mb-8">
-        {PLACEHOLDER_GROUPS.map((group) => (
-          <div
-            key={group.id}
-            className="flex rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white"
-          >
-            {/* Left colour bar */}
-            <div className="w-1.5 flex-shrink-0" style={{ backgroundColor: group.colour }} />
+        {groupsLoading ? (
+          <div className="flex justify-center py-8">
+            <Spinner />
+          </div>
+        ) : groups.length > 0 ? (
+          groups.map((group) => (
+            <a
+              key={group.id}
+              href={`/g/${group.slug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white hover:shadow-md transition-shadow"
+            >
+              {/* Left colour bar */}
+              <div className="w-1.5 flex-shrink-0" style={{ backgroundColor: group.primaryColour }} />
 
-            {/* Card body */}
-            <div className="flex-1 px-4 py-4 flex items-center justify-between gap-3 min-w-0">
-              <div className="min-w-0 flex-1">
-                <h3 className="font-semibold text-gray-900 text-sm truncate">{group.name}</h3>
-                <p className="text-xs text-gray-500 mt-0.5 truncate">{group.tagline}</p>
-                <div className="flex items-center gap-2 mt-2.5 flex-wrap">
-                  <span className="flex items-center gap-1 text-xs text-gray-400">
-                    <UsersIcon />
-                    {group.members} members
-                  </span>
-                  <span
-                    className="text-xs px-2.5 py-0.5 rounded-full font-medium"
-                    style={{
-                      backgroundColor: group.colour + '1a',
-                      color: group.colour,
-                    }}
-                  >
-                    {group.category}
-                  </span>
+              {/* Card body */}
+              <div className="flex-1 px-4 py-4 flex items-center justify-between gap-3 min-w-0">
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-gray-900 text-sm truncate">{group.name}</h3>
+                  {group.tagline && (
+                    <p className="text-xs text-gray-500 mt-0.5 truncate">{group.tagline}</p>
+                  )}
+                  <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+                    <span className="flex items-center gap-1 text-xs text-gray-400">
+                      <UsersIcon />
+                      {group.memberCount} member{group.memberCount !== 1 ? 's' : ''}
+                    </span>
+                    <span
+                      className="text-xs px-2.5 py-0.5 rounded-full font-medium"
+                      style={{
+                        backgroundColor: group.primaryColour + '1a',
+                        color: group.primaryColour,
+                      }}
+                    >
+                      {group.category}
+                    </span>
+                  </div>
                 </div>
               </div>
-
-              {/* Join button */}
-              <button
-                type="button"
-                className="flex-shrink-0 px-4 py-2 rounded-full text-xs font-semibold text-white transition-opacity hover:opacity-85 active:scale-95"
-                style={{ backgroundColor: group.colour }}
-              >
-                Join
-              </button>
-            </div>
+            </a>
+          ))
+        ) : (
+          <div className="text-center py-8">
+            <p className="text-sm text-gray-500">
+              No groups match your interests yet.
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              You can explore or start your own later.
+            </p>
           </div>
-        ))}
+        )}
       </div>
 
       {/* Primary CTA */}
@@ -410,6 +423,9 @@ export default function OnboardingPage() {
     avatarPreview: null,
   })
 
+  const [suggestedGroups, setSuggestedGroups] = useState<SuggestedGroup[]>([])
+  const [groupsLoading, setGroupsLoading] = useState(false)
+
   // Pre-fill full name from Supabase auth metadata
   useEffect(() => {
     const supabase = createClient()
@@ -446,6 +462,62 @@ export default function OnboardingPage() {
   }
 
   async function goNext() {
+    // When moving from step 2 → step 3, fetch real groups matching interests
+    if (step === 2) {
+      setGroupsLoading(true)
+      const categories = formData.interests
+        .map((i) => INTEREST_TO_CATEGORY[i])
+        .filter((c): c is string => !!c)
+
+      if (categories.length > 0) {
+        try {
+          const supabase = createClient()
+          const uniqueCategories = [...new Set(categories)]
+          const { data: groups } = await supabase
+            .from('groups')
+            .select('id, name, slug, tagline, category, primary_colour')
+            .eq('is_public', true)
+            .in('category', uniqueCategories)
+            .limit(6)
+
+          if (groups && groups.length > 0) {
+            const groupIds = groups.map((g: { id: string }) => g.id)
+            const { data: memberRows } = await supabase
+              .from('group_members')
+              .select('group_id')
+              .in('group_id', groupIds)
+              .eq('status', 'approved')
+
+            const counts: Record<string, number> = {}
+            for (const r of memberRows ?? []) {
+              counts[r.group_id] = (counts[r.group_id] ?? 0) + 1
+            }
+
+            setSuggestedGroups(
+              groups
+                .map((g: { id: string; name: string; slug: string; tagline: string | null; category: string; primary_colour: string }) => ({
+                  id: g.id,
+                  name: g.name,
+                  slug: g.slug,
+                  tagline: g.tagline,
+                  category: g.category,
+                  primaryColour: g.primary_colour,
+                  memberCount: counts[g.id] ?? 0,
+                }))
+                .sort((a: SuggestedGroup, b: SuggestedGroup) => b.memberCount - a.memberCount)
+            )
+          } else {
+            setSuggestedGroups([])
+          }
+        } catch {
+          setSuggestedGroups([])
+        }
+      } else {
+        setSuggestedGroups([])
+      }
+      setGroupsLoading(false)
+    }
+
     await goToStep(step + 1)
   }
 
@@ -501,7 +573,7 @@ export default function OnboardingPage() {
 
       if (profileErr) throw profileErr
 
-      router.push('/home')
+      window.location.href = '/home'
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
       setSaving(false)
@@ -587,7 +659,13 @@ export default function OnboardingPage() {
           <Step2Interests data={formData} onToggle={toggleInterest} onContinue={goNext} />
         )}
         {step === 3 && (
-          <Step3Groups loading={saving} onFinish={finish} onSkip={finish} />
+          <Step3Groups
+            groups={suggestedGroups}
+            groupsLoading={groupsLoading}
+            loading={saving}
+            onFinish={finish}
+            onSkip={finish}
+          />
         )}
       </main>
 

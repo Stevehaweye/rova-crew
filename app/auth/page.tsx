@@ -81,19 +81,32 @@ function SuccessState({ email, onReset }: { email: string; onReset: () => void }
 
       <h2 className="text-xl font-bold text-gray-900 mb-2">Check your email</h2>
       <p className="text-sm text-gray-500 mb-1">We sent a sign-in link to</p>
-      <p className="text-sm font-semibold text-gray-800 mb-7 break-all">{email}</p>
+      <p className="text-sm font-semibold text-gray-800 mb-5 break-all">{email}</p>
+
+      <div
+        className="rounded-xl border px-4 py-3.5 mb-6"
+        style={{ borderColor: '#C9982A40', backgroundColor: '#C9982A08' }}
+      >
+        <p className="text-sm font-semibold text-gray-800 mb-1">
+          Check your junk or spam folder
+        </p>
+        <p className="text-xs text-gray-500 leading-relaxed">
+          Sign-in links sometimes land in spam. To avoid this in future,
+          add <span className="font-medium text-gray-700">noreply@mail.app.supabase.io</span> to
+          your contacts.
+        </p>
+      </div>
 
       <p className="text-xs text-gray-400 leading-relaxed">
-        Didn&apos;t receive it? Check your spam folder or{' '}
+        Still nothing?{' '}
         <button
           type="button"
           onClick={onReset}
           className="underline font-medium"
           style={{ color: '#0D7377' }}
         >
-          try again
+          Try again
         </button>
-        .
       </p>
     </div>
   )

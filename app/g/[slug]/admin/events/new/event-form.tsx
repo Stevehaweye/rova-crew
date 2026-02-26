@@ -712,28 +712,28 @@ export default function EventForm({
       let resultEventId: string
 
       if (isEditMode) {
-        // Update existing event
-        const { error: updateErr } = await supabase
-          .from('events')
-          .update(eventPayload)
-          .eq('id', eventId)
-
-        if (updateErr) throw updateErr
+        // Update existing event via API (service client bypasses RLS)
+        const updateRes = await fetch(`/api/events/${eventId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(eventPayload),
+        })
+        const updateData = await updateRes.json()
+        if (!updateRes.ok) throw new Error(updateData.error || 'Failed to update event')
         resultEventId = eventId
       } else {
-        // Insert new event
-        const { data: eventData, error: eventErr } = await supabase
-          .from('events')
-          .insert({
+        // Create new event via API (service client bypasses RLS)
+        const createRes = await fetch('/api/events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            groupId: group.id,
             ...eventPayload,
-            group_id: group.id,
-            created_by: userId,
-          })
-          .select('id')
-          .single()
-
-        if (eventErr) throw eventErr
-        resultEventId = eventData.id
+          }),
+        })
+        const createData = await createRes.json()
+        if (!createRes.ok) throw new Error(createData.error || 'Failed to create event')
+        resultEventId = createData.eventId
 
         // Create Stripe Product + Price for fixed-price events
         if (form.paymentType === 'fixed' && group.hasStripeAccount) {
