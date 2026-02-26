@@ -312,22 +312,24 @@ function UpcomingEvents({
   events,
   groupSlug,
   colour,
+  isAdmin,
 }: {
   events: UpcomingEventData[]
   groupSlug: string
   colour: string
+  isAdmin: boolean
 }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-base font-bold text-gray-900">Upcoming Events</h2>
-        {events.length > 0 && (
+        {events.length > 0 && isAdmin && (
           <Link
             href={`/g/${groupSlug}/admin/events`}
             className="text-xs font-semibold transition-opacity hover:opacity-75"
             style={{ color: colour }}
           >
-            See all events &rarr;
+            Manage events &rarr;
           </Link>
         )}
       </div>
@@ -598,6 +600,8 @@ export default async function GroupPage({
   }
 
   const isApprovedMember = membership?.status === 'approved'
+  const isAdmin = isApprovedMember &&
+    (membership?.role === 'super_admin' || membership?.role === 'co_admin')
 
   // Private group guard
   if (!group.is_public && !isApprovedMember) {
@@ -761,7 +765,7 @@ export default async function GroupPage({
           {/* ── Left column ──────────────────────────────────────────── */}
           <div className="space-y-8 min-w-0">
             {group.description && <About description={group.description} />}
-            <UpcomingEvents events={upcomingEvents} groupSlug={group.slug} colour={colour} />
+            <UpcomingEvents events={upcomingEvents} groupSlug={group.slug} colour={colour} isAdmin={isAdmin} />
             <MemberWall
               members={members}
               groupSlug={group.slug}
@@ -786,6 +790,31 @@ export default async function GroupPage({
               membershipFeePence={group.membership_fee_pence ?? null}
               inviteToken={inviteToken ?? null}
             />
+            {/* Admin Panel — only for admins */}
+            {isAdmin && (
+              <Link
+                href={`/g/${group.slug}/admin`}
+                className="block bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md hover:border-gray-200 transition-all"
+                style={{ borderLeft: `4px solid ${colour}` }}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
+                    style={{ backgroundColor: colour + '15' }}
+                  >
+                    ⚙️
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-gray-900">Admin Panel</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Manage events, members &amp; settings</p>
+                  </div>
+                  <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                  </svg>
+                </div>
+              </Link>
+            )}
+
             {/* Group Chat — only for approved members */}
             {initialStatus === 'approved' && (
               <Link
