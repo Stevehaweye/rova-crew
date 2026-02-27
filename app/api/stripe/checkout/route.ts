@@ -57,16 +57,37 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // ── Fetch group's Stripe Connect account ──────────────────────────────────
+  // ── Check group payments enabled + payment admin ──────────────────────────
+  const { data: groupPayment } = await serviceClient
+    .from('groups')
+    .select('payments_enabled, payment_admin_id')
+    .eq('id', event.group_id)
+    .single()
+
+  if (!groupPayment?.payments_enabled) {
+    return NextResponse.json(
+      { error: 'Payments are not enabled for this group.' },
+      { status: 400 }
+    )
+  }
+
+  if (!groupPayment?.payment_admin_id) {
+    return NextResponse.json(
+      { error: 'No payment admin is set for this group.' },
+      { status: 400 }
+    )
+  }
+
+  // ── Fetch payment admin's Stripe Connect account ────────────────────────
   const { data: stripeAccount } = await serviceClient
     .from('stripe_accounts')
-    .select('stripe_account_id, charges_enabled')
-    .eq('group_id', event.group_id)
+    .select('stripe_account_id, charges_enabled, onboarding_complete')
+    .eq('user_id', groupPayment.payment_admin_id)
     .single()
 
   if (!stripeAccount?.stripe_account_id || !stripeAccount.charges_enabled) {
     return NextResponse.json(
-      { error: 'This group has not connected a Stripe account. Payments cannot be processed.' },
+      { error: 'The payment admin for this group has not completed Stripe setup. Visit Profile > Settings > Payments.' },
       { status: 400 }
     )
   }

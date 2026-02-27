@@ -230,14 +230,15 @@ export async function POST(request: NextRequest) {
     }
   } else if (event.type === 'account.updated') {
     const account = event.data.object as Stripe.Account
-    // Update the group's Stripe Connect status in the database
+    // Update the user's Stripe Connect status in the database
     await supabase
       .from('stripe_accounts')
       .update({
         charges_enabled: account.charges_enabled ?? false,
         payouts_enabled: account.payouts_enabled ?? false,
         details_submitted: account.details_submitted ?? false,
-        updated_at: new Date().toISOString(),
+        onboarding_complete:
+          account.charges_enabled === true && account.details_submitted === true,
       })
       .eq('stripe_account_id', account.id)
   } else {

@@ -110,6 +110,13 @@ export default function UserMenu({
           >
             Notification settings
           </Link>
+          <Link
+            href="/settings/payments"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            Payment settings
+          </Link>
           <div className="border-t border-gray-100 my-0.5" />
           <button
             onClick={handleSignOut}

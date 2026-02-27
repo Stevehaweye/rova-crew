@@ -1,18 +1,14 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { getStripeServer } from '@/lib/stripe'
 import SettingsClient from './settings-client'
 
 export default async function SettingsPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ slug: string }>
-  searchParams: Promise<{ stripe?: string }>
 }) {
   const { slug } = await params
-  const { stripe: stripeParam } = await searchParams
   const supabase = await createClient()
 
   // Auth check
@@ -45,53 +41,43 @@ export default async function SettingsPage({
 
   if (!isAdmin) redirect(`/g/${slug}`)
 
-  // Fetch Stripe account status
-  let { data: stripeAccount } = await supabase
-    .from('stripe_accounts')
-    .select('stripe_account_id, charges_enabled, payouts_enabled, details_submitted')
-    .eq('group_id', group.id)
-    .maybeSingle()
-
-  // When returning from Stripe onboarding, refresh status directly from Stripe
-  if (stripeParam === 'complete' && stripeAccount?.stripe_account_id) {
-    try {
-      const stripe = getStripeServer()
-      const account = await stripe.accounts.retrieve(stripeAccount.stripe_account_id)
-      const serviceClient = createServiceClient()
-
-      await serviceClient
-        .from('stripe_accounts')
-        .update({
-          charges_enabled: account.charges_enabled ?? false,
-          payouts_enabled: account.payouts_enabled ?? false,
-          details_submitted: account.details_submitted ?? false,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('stripe_account_id', stripeAccount.stripe_account_id)
-
-      // Use the fresh data
-      stripeAccount = {
-        ...stripeAccount,
-        charges_enabled: account.charges_enabled ?? false,
-        payouts_enabled: account.payouts_enabled ?? false,
-        details_submitted: account.details_submitted ?? false,
-      }
-    } catch (err) {
-      console.error('[settings] Failed to refresh Stripe status:', err)
-    }
-  }
-
   const colour = group.primary_colour?.startsWith('#')
     ? group.primary_colour
     : `#${group.primary_colour ?? '0D7377'}`
 
-  // Fetch membership fee settings
   const serviceClient = createServiceClient()
-  const { data: groupFeeData } = await serviceClient
+
+  // Fetch group data including payment columns
+  const { data: groupData } = await serviceClient
     .from('groups')
-    .select('membership_fee_enabled, membership_fee_pence, allow_dm, tier_theme, badge_announcements_enabled, watermark_photos, location, tagline, description, category, is_public, join_approval_required, hero_url, hero_focal_x, hero_focal_y')
+    .select('membership_fee_enabled, membership_fee_pence, allow_dm, tier_theme, badge_announcements_enabled, watermark_photos, location, tagline, description, category, is_public, join_approval_required, hero_url, hero_focal_x, hero_focal_y, payments_enabled, payment_admin_id')
     .eq('id', group.id)
     .single()
+
+  // Fetch current user's Stripe account status
+  const { data: userStripeAccount } = await serviceClient
+    .from('stripe_accounts')
+    .select('stripe_account_id, onboarding_complete, charges_enabled, payouts_enabled, details_submitted')
+    .eq('user_id', user.id)
+    .maybeSingle()
+
+  // Fetch payment admin's name if different from current user
+  let paymentAdminName: string | null = null
+  if (groupData?.payment_admin_id && groupData.payment_admin_id !== user.id) {
+    const { data: adminProfile } = await serviceClient
+      .from('profiles')
+      .select('full_name')
+      .eq('id', groupData.payment_admin_id)
+      .maybeSingle()
+    paymentAdminName = adminProfile?.full_name ?? null
+  } else if (groupData?.payment_admin_id === user.id) {
+    const { data: myProfile } = await serviceClient
+      .from('profiles')
+      .select('full_name')
+      .eq('id', user.id)
+      .maybeSingle()
+    paymentAdminName = myProfile?.full_name ?? null
+  }
 
   return (
     <SettingsClient
@@ -101,37 +87,35 @@ export default async function SettingsPage({
         slug: group.slug,
         colour,
       }}
-      stripe={
-        stripeAccount
-          ? {
-              accountId: stripeAccount.stripe_account_id,
-              chargesEnabled: stripeAccount.charges_enabled,
-              payoutsEnabled: stripeAccount.payouts_enabled,
-              detailsSubmitted: stripeAccount.details_submitted,
-            }
-          : null
-      }
-      membershipFee={{
-        enabled: groupFeeData?.membership_fee_enabled ?? false,
-        feePence: groupFeeData?.membership_fee_pence ?? null,
+      payments={{
+        userHasStripe: !!userStripeAccount?.onboarding_complete,
+        userStripeChargesEnabled: userStripeAccount?.charges_enabled ?? false,
+        groupPaymentsEnabled: groupData?.payments_enabled ?? false,
+        paymentAdminId: groupData?.payment_admin_id ?? null,
+        paymentAdminName,
+        currentUserId: user.id,
       }}
-      dmEnabled={groupFeeData?.allow_dm ?? true}
-      tierTheme={groupFeeData?.tier_theme ?? 'generic'}
-      badgeAnnouncementsEnabled={groupFeeData?.badge_announcements_enabled ?? true}
-      watermarkPhotos={groupFeeData?.watermark_photos ?? false}
-      location={groupFeeData?.location ?? ''}
+      membershipFee={{
+        enabled: groupData?.membership_fee_enabled ?? false,
+        feePence: groupData?.membership_fee_pence ?? null,
+      }}
+      dmEnabled={groupData?.allow_dm ?? true}
+      tierTheme={groupData?.tier_theme ?? 'generic'}
+      badgeAnnouncementsEnabled={groupData?.badge_announcements_enabled ?? true}
+      watermarkPhotos={groupData?.watermark_photos ?? false}
+      location={groupData?.location ?? ''}
       groupProfile={{
         name: group.name,
-        tagline: groupFeeData?.tagline ?? '',
-        description: groupFeeData?.description ?? '',
-        category: groupFeeData?.category ?? '',
-        isPublic: groupFeeData?.is_public ?? true,
-        joinApprovalRequired: groupFeeData?.join_approval_required ?? false,
+        tagline: groupData?.tagline ?? '',
+        description: groupData?.description ?? '',
+        category: groupData?.category ?? '',
+        isPublic: groupData?.is_public ?? true,
+        joinApprovalRequired: groupData?.join_approval_required ?? false,
       }}
       heroImage={{
-        url: groupFeeData?.hero_url ?? null,
-        focalX: groupFeeData?.hero_focal_x ?? 50,
-        focalY: groupFeeData?.hero_focal_y ?? 50,
+        url: groupData?.hero_url ?? null,
+        focalX: groupData?.hero_focal_x ?? 50,
+        focalY: groupData?.hero_focal_y ?? 50,
       }}
     />
   )

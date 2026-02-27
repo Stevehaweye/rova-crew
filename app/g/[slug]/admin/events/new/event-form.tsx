@@ -19,6 +19,8 @@ interface GroupProps {
   hasStripeAccount: boolean
 }
 
+type StripeScenario = 'none' | 'incomplete' | 'not_enabled' | 'ready'
+
 type PaymentType = 'free' | 'fixed' | 'shared_cost'
 
 interface EventFormData {
@@ -542,11 +544,13 @@ export default function EventForm({
   userId,
   eventId,
   initialData,
+  stripeScenario = 'none',
 }: {
   group: GroupProps
   userId: string
   eventId?: string
   initialData?: Partial<EventFormData> & { existingCoverUrl?: string | null }
+  stripeScenario?: StripeScenario
 }) {
   const isEditMode = !!eventId
   const router = useRouter()
@@ -556,6 +560,8 @@ export default function EventForm({
   const [submitting, setSubmitting] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [currentStripeScenario, setCurrentStripeScenario] = useState(stripeScenario)
+  const [enablingPayments, setEnablingPayments] = useState(false)
 
   const [form, setForm] = useState<EventFormData>({
     title: initialData?.title ?? '',
@@ -854,22 +860,74 @@ export default function EventForm({
                 ))}
               </div>
 
-              {/* Stripe Connect banner */}
-              {form.paymentType !== 'free' && !group.hasStripeAccount && (
+              {/* Stripe status banners */}
+              {form.paymentType !== 'free' && currentStripeScenario === 'none' && (
                 <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 flex items-start gap-3">
                   <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
                     <TicketIcon className="w-4 h-4 text-amber-600" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-amber-900">Connect Stripe to enable paid events</p>
-                    <p className="text-xs text-amber-700 mt-0.5">You need a Stripe account to collect payments from attendees.</p>
+                    <p className="text-sm font-semibold text-amber-900">To create paid events, connect your bank account first</p>
+                    <p className="text-xs text-amber-700 mt-0.5">You only need to do this once — works across all your groups.</p>
                     <Link
-                      href={`/g/${group.slug}/admin/settings`}
+                      href="/settings/payments"
                       className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-200/60 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors"
                     >
-                      <StripeLinkIcon />
-                      Connect Stripe &rarr;
+                      Set up payments (takes 5 minutes) &rarr;
                     </Link>
+                  </div>
+                </div>
+              )}
+
+              {form.paymentType !== 'free' && currentStripeScenario === 'incomplete' && (
+                <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <TicketIcon className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-amber-900">Your payment setup is incomplete</p>
+                    <p className="text-xs text-amber-700 mt-0.5">Complete your Stripe onboarding to enable paid events.</p>
+                    <Link
+                      href="/settings/payments"
+                      className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-bold text-amber-800 bg-amber-200/60 hover:bg-amber-200 px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      Complete setup &rarr;
+                    </Link>
+                  </div>
+                </div>
+              )}
+
+              {form.paymentType !== 'free' && currentStripeScenario === 'not_enabled' && (
+                <div className="rounded-xl border border-teal-300 bg-teal-50 p-4 flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-teal-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <TicketIcon className="w-4 h-4 text-teal-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-teal-900">Payments are not yet enabled for this group</p>
+                    <p className="text-xs text-teal-700 mt-0.5">Your Stripe account is ready. Enable payments for this group to create paid events.</p>
+                    <button
+                      type="button"
+                      disabled={enablingPayments}
+                      onClick={async () => {
+                        setEnablingPayments(true)
+                        try {
+                          const res = await fetch(`/api/groups/${group.slug}/settings`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ payments_enabled: true, payment_admin_id: userId }),
+                          })
+                          if (res.ok) {
+                            setCurrentStripeScenario('ready')
+                          }
+                        } catch (err) {
+                          console.error('[event-form] enable payments error:', err)
+                        }
+                        setEnablingPayments(false)
+                      }}
+                      className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-bold text-teal-800 bg-teal-200/60 hover:bg-teal-200 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-60"
+                    >
+                      {enablingPayments ? 'Enabling...' : 'Enable payments for this group'}
+                    </button>
                   </div>
                 </div>
               )}

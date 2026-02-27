@@ -76,6 +76,8 @@ export async function POST(
     if (typeof body.hero_url === 'string') updates.hero_url = body.hero_url || null
     if (typeof body.hero_focal_x === 'number') updates.hero_focal_x = Math.max(0, Math.min(100, Math.round(body.hero_focal_x)))
     if (typeof body.hero_focal_y === 'number') updates.hero_focal_y = Math.max(0, Math.min(100, Math.round(body.hero_focal_y)))
+    if (typeof body.payments_enabled === 'boolean') updates.payments_enabled = body.payments_enabled
+    if (typeof body.payment_admin_id === 'string') updates.payment_admin_id = body.payment_admin_id
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'No valid fields provided' }, { status: 400 })

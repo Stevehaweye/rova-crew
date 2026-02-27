@@ -29,12 +29,14 @@ interface Props {
     slug: string
     colour: string
   }
-  stripe: {
-    accountId: string
-    chargesEnabled: boolean
-    payoutsEnabled: boolean
-    detailsSubmitted: boolean
-  } | null
+  payments: {
+    userHasStripe: boolean
+    userStripeChargesEnabled: boolean
+    groupPaymentsEnabled: boolean
+    paymentAdminId: string | null
+    paymentAdminName: string | null
+    currentUserId: string
+  }
   membershipFee: {
     enabled: boolean
     feePence: number | null
@@ -61,10 +63,8 @@ interface Props {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function SettingsClient({ group, stripe, membershipFee, dmEnabled: initialDmEnabled, tierTheme: initialTierTheme, badgeAnnouncementsEnabled: initialBadgeAnnounce, watermarkPhotos: initialWatermark, location: initialLocation, groupProfile, heroImage }: Props) {
+export default function SettingsClient({ group, payments, membershipFee, dmEnabled: initialDmEnabled, tierTheme: initialTierTheme, badgeAnnouncementsEnabled: initialBadgeAnnounce, watermarkPhotos: initialWatermark, location: initialLocation, groupProfile, heroImage }: Props) {
   const searchParams = useSearchParams()
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
   const [toast, setToast] = useState('')
 
   // Group profile state
@@ -97,6 +97,11 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
   const [watermarkOn, setWatermarkOn] = useState(initialWatermark)
   const [watermarkSaving, setWatermarkSaving] = useState(false)
 
+  // Payments toggle state
+  const [paymentsOn, setPaymentsOn] = useState(payments.groupPaymentsEnabled)
+  const [paymentsSaving, setPaymentsSaving] = useState(false)
+  const [showDisableConfirm, setShowDisableConfirm] = useState(false)
+
   // Location state
   const [locationVal, setLocationVal] = useState(initialLocation)
   const [locationSaving, setLocationSaving] = useState(false)
@@ -113,19 +118,13 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
   const heroInputRef = useRef<HTMLInputElement>(null)
   const focalImageRef = useRef<HTMLDivElement>(null)
 
-  // Show toast on return from Stripe
+  // Show toast on return from Stripe (kept for backwards compat with old links)
   useEffect(() => {
     const stripeParam = searchParams.get('stripe')
     if (stripeParam === 'complete') {
-      setToast(
-        stripe?.chargesEnabled
-          ? 'Stripe connected successfully! You can now accept payments.'
-          : 'Stripe onboarding submitted. It may take a moment to activate.'
-      )
-    } else if (stripeParam === 'refresh') {
-      setToast('Your Stripe link expired. Click below to continue setup.')
+      setToast('Stripe setup is now managed in Profile > Settings > Payments.')
     }
-  }, [searchParams, stripe?.chargesEnabled])
+  }, [searchParams])
 
   // Dismiss toast after 6 seconds
   useEffect(() => {
@@ -134,36 +133,54 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
     return () => clearTimeout(t)
   }, [toast])
 
-  async function handleConnect() {
-    setLoading(true)
-    setError('')
-
+  async function handleTogglePayments(enable: boolean) {
+    if (!enable) {
+      setShowDisableConfirm(true)
+      return
+    }
+    setPaymentsSaving(true)
     try {
-      const res = await fetch('/api/stripe/connect', {
+      const res = await fetch(`/api/groups/${group.slug}/settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ group_id: group.id, slug: group.slug }),
+        body: JSON.stringify({
+          payments_enabled: true,
+          payment_admin_id: payments.currentUserId,
+        }),
       })
-
-      const data = await res.json()
-
       if (!res.ok) {
-        setError(data.error || 'Something went wrong.')
-        setLoading(false)
-        return
+        const data = await res.json()
+        setToast(data.error || 'Failed to enable payments')
+      } else {
+        setPaymentsOn(true)
+        setToast('Payments enabled. You can now create paid events.')
       }
-
-      if (data.url) {
-        window.location.href = data.url
-        return
-      }
-
-      setError('No onboarding URL returned. Please try again.')
-      setLoading(false)
     } catch {
-      setError('Network error. Please try again.')
-      setLoading(false)
+      setToast('Network error. Please try again.')
     }
+    setPaymentsSaving(false)
+  }
+
+  async function handleConfirmDisable() {
+    setPaymentsSaving(true)
+    setShowDisableConfirm(false)
+    try {
+      const res = await fetch(`/api/groups/${group.slug}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payments_enabled: false }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setToast(data.error || 'Failed to disable payments')
+      } else {
+        setPaymentsOn(false)
+        setToast('Payments disabled for this group')
+      }
+    } catch {
+      setToast('Network error. Please try again.')
+    }
+    setPaymentsSaving(false)
   }
 
   async function handleSaveFee() {
@@ -790,7 +807,7 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
           </div>
         </section>
 
-        {/* ── Stripe Connect Card ──────────────────────────────────────── */}
+        {/* ── Payments Toggle ──────────────────────────────────────── */}
         <section className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center">
@@ -800,122 +817,113 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
             </div>
             <div>
               <p className="text-sm font-bold text-gray-900">Payments</p>
-              <p className="text-xs text-gray-500">Accept payments for your events via Stripe</p>
+              <p className="text-xs text-gray-500">Enable your group to charge for events</p>
             </div>
           </div>
 
           <div className="px-5 py-5">
-            {/* ── Connected ──────────────────────────────── */}
-            {stripe?.chargesEnabled ? (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-                    <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">Stripe Connected</p>
-                    <p className="text-xs text-gray-400">
-                      Account {stripe.accountId.slice(0, 12)}...
-                      {stripe.payoutsEnabled && ' · Payouts enabled'}
-                    </p>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500 leading-relaxed">
-                  You can now create paid events. Funds are transferred directly to your bank account.
-                  ROVA Crew takes a 5% platform fee per transaction.
-                </p>
-              </div>
-            ) : stripe?.detailsSubmitted ? (
-              /* ── Onboarding submitted, waiting for activation ── */
-              <div className="space-y-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
-                    <svg className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">Onboarding in progress</p>
-                    <p className="text-xs text-gray-400">Stripe is reviewing your details</p>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500 leading-relaxed">
-                  Your details have been submitted. Stripe may take a few minutes to verify your account.
-                  Refresh this page to check the latest status.
-                </p>
-                <button
-                  onClick={handleConnect}
-                  disabled={loading}
-                  className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                  style={{ backgroundColor: group.colour }}
-                >
-                  {loading ? 'Loading...' : 'Continue setup on Stripe'}
-                </button>
-              </div>
-            ) : stripe ? (
-              /* ── Account created but onboarding not finished ── */
-              <div className="space-y-4">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
-                    <svg className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">Setup incomplete</p>
-                    <p className="text-xs text-gray-400">Finish connecting your Stripe account</p>
-                  </div>
-                </div>
-                <button
-                  onClick={handleConnect}
-                  disabled={loading}
-                  className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
-                  style={{ backgroundColor: group.colour }}
-                >
-                  {loading ? 'Loading...' : 'Continue Stripe setup'}
-                </button>
-              </div>
-            ) : (
-              /* ── Not connected ──────────────────────────── */
+            {!payments.userHasStripe ? (
+              /* ── CASE 1: No Stripe account ──────────────── */
               <div className="space-y-4">
                 <p className="text-sm text-gray-600 leading-relaxed">
-                  Connect a Stripe account to accept card payments for your events.
-                  Funds go directly to your bank account. ROVA Crew takes a 5% platform fee.
+                  You need to connect a bank account before enabling payments for this group.
                 </p>
-                <ul className="text-xs text-gray-500 space-y-1.5">
-                  <li className="flex items-center gap-2">
-                    <span className="w-1 h-1 rounded-full bg-gray-400" />
-                    Accept credit/debit card payments
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <span className="w-1 h-1 rounded-full bg-gray-400" />
-                    Automatic payouts to your bank account
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <span className="w-1 h-1 rounded-full bg-gray-400" />
-                    Takes about 2 minutes to set up
-                  </li>
-                </ul>
-                <button
-                  onClick={handleConnect}
-                  disabled={loading}
-                  className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                <a
+                  href="/settings/payments"
+                  className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 flex items-center justify-center"
                   style={{ backgroundColor: group.colour }}
                 >
-                  {loading ? 'Connecting...' : 'Connect Stripe'}
-                </button>
-                {error && (
-                  <p className="text-xs text-red-500 text-center">{error}</p>
+                  Set up payments (takes 5 minutes)
+                </a>
+                <p className="text-xs text-gray-400 text-center">
+                  You only need to do this once — works across all your groups.
+                </p>
+              </div>
+            ) : (
+              /* ── CASE 2/3: Has Stripe — show toggle ──────── */
+              <div className="space-y-4">
+                <label className="flex items-center justify-between cursor-pointer">
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Accept payments for this group</span>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {paymentsOn
+                        ? 'Members can pay for events via Stripe'
+                        : 'Enable to allow paid events'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={paymentsOn}
+                    disabled={paymentsSaving}
+                    onClick={() => handleTogglePayments(!paymentsOn)}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${
+                      paymentsOn ? 'bg-teal-500' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${paymentsOn ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </label>
+
+                {paymentsOn && payments.paymentAdminName && (
+                  <p className="text-xs text-gray-500">
+                    Payments received by: <span className="font-semibold text-gray-700">{payments.paymentAdminName}</span>
+                  </p>
                 )}
+
+                {paymentsOn && (
+                  <p className="text-xs text-gray-400">
+                    Manage your payout schedule in{' '}
+                    <a href="/settings/payments" className="font-medium underline" style={{ color: group.colour }}>
+                      Settings &gt; Payments
+                    </a>.
+                  </p>
+                )}
+
+                {/* Phase 2 stub */}
+                <div className="border-t border-gray-100 pt-3 mt-3">
+                  <p className="text-xs text-gray-300">
+                    Transfer payment admin to another co-admin — coming soon
+                  </p>
+                </div>
               </div>
             )}
           </div>
         </section>
 
+        {/* ── Disable Payments Confirmation Modal ──────────────────── */}
+        {showDisableConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100">
+                <p className="text-sm font-bold text-gray-900">Disable payments?</p>
+              </div>
+              <div className="px-5 py-4">
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  Disabling payments means members cannot pay for events. Existing payment records are not affected.
+                </p>
+              </div>
+              <div className="px-5 py-3 border-t border-gray-100 flex gap-3">
+                <button
+                  onClick={() => setShowDisableConfirm(false)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmDisable}
+                  disabled={paymentsSaving}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-red-500 hover:bg-red-600 transition-colors disabled:opacity-60"
+                >
+                  {paymentsSaving ? 'Disabling...' : 'Disable payments'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Monthly Membership Fee ─────────────────────────────── */}
-        {stripe?.chargesEnabled && (
+        {paymentsOn && payments.userStripeChargesEnabled && (
           <section className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center">

@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import AdminShell from './admin-shell'
 
 // Supabase join type for nested profiles select
@@ -150,14 +151,23 @@ export default async function AdminPage({
     }
   }
 
-  // ── Check Stripe Connect status ──────────────────────────────────────────────
-  const { data: stripeAccount } = await supabase
-    .from('stripe_accounts')
-    .select('charges_enabled')
-    .eq('group_id', group.id)
-    .maybeSingle()
+  // ── Check Stripe Connect status (user-level) ────────────────────────────────
+  const svcAdmin = createServiceClient()
+  const { data: groupPaymentInfo } = await svcAdmin
+    .from('groups')
+    .select('payments_enabled, payment_admin_id')
+    .eq('id', group.id)
+    .single()
 
-  const stripeConnected = stripeAccount?.charges_enabled === true
+  let stripeConnected = false
+  if (groupPaymentInfo?.payments_enabled && groupPaymentInfo?.payment_admin_id) {
+    const { data: stripeAccount } = await svcAdmin
+      .from('stripe_accounts')
+      .select('charges_enabled')
+      .eq('user_id', groupPaymentInfo.payment_admin_id)
+      .maybeSingle()
+    stripeConnected = stripeAccount?.charges_enabled === true
+  }
 
   // ── Monthly revenue ────────────────────────────────────────────────────────
   let monthlyRevenuePence = 0

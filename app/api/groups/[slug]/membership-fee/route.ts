@@ -67,15 +67,25 @@ export async function POST(
       return NextResponse.json({ error: 'Fee must be at least £1.00' }, { status: 400 })
     }
 
-    // Fetch Stripe account for this group
+    // Fetch payment admin's Stripe account
+    const { data: groupPayment } = await serviceClient
+      .from('groups')
+      .select('payments_enabled, payment_admin_id')
+      .eq('id', group.id)
+      .single()
+
+    if (!groupPayment?.payments_enabled || !groupPayment?.payment_admin_id) {
+      return NextResponse.json({ error: 'Payments not enabled for this group' }, { status: 400 })
+    }
+
     const { data: stripeAccount } = await serviceClient
       .from('stripe_accounts')
       .select('stripe_account_id, charges_enabled')
-      .eq('group_id', group.id)
+      .eq('user_id', groupPayment.payment_admin_id)
       .maybeSingle()
 
     if (!stripeAccount?.charges_enabled) {
-      return NextResponse.json({ error: 'Stripe Connect not set up' }, { status: 400 })
+      return NextResponse.json({ error: 'Payment admin has not completed Stripe setup' }, { status: 400 })
     }
 
     const stripe = getStripeServer()

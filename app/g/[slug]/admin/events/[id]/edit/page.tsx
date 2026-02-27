@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import EventForm from '../../new/event-form'
 
 export default async function EditEventPage({
@@ -40,14 +41,29 @@ export default async function EditEventPage({
 
   if (!isAdmin) redirect(`/g/${slug}`)
 
-  // Stripe Connect status
-  const { data: stripeAccount } = await supabase
+  // Stripe status: user-level
+  const serviceClient = createServiceClient()
+
+  const { data: userStripe } = await serviceClient
     .from('stripe_accounts')
-    .select('id, charges_enabled')
-    .eq('group_id', group.id)
+    .select('onboarding_complete, charges_enabled')
+    .eq('user_id', user.id)
     .maybeSingle()
 
-  const hasStripeAccount = !!stripeAccount?.charges_enabled
+  const { data: groupPayment } = await serviceClient
+    .from('groups')
+    .select('payments_enabled, payment_admin_id')
+    .eq('id', group.id)
+    .single()
+
+  let stripeScenario: 'none' | 'incomplete' | 'not_enabled' | 'ready' = 'none'
+  if (userStripe?.onboarding_complete && userStripe?.charges_enabled) {
+    stripeScenario = groupPayment?.payments_enabled ? 'ready' : 'not_enabled'
+  } else if (userStripe) {
+    stripeScenario = 'incomplete'
+  }
+
+  const hasStripeAccount = stripeScenario === 'ready'
 
   // Fetch event
   const { data: event } = await supabase
@@ -79,6 +95,7 @@ export default async function EditEventPage({
       }}
       userId={user.id}
       eventId={eventId}
+      stripeScenario={stripeScenario}
       initialData={{
         title: event.title ?? '',
         description: event.description ?? '',
