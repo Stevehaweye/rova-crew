@@ -7,6 +7,21 @@ import { TIER_THEMES } from '@/lib/tier-themes'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+const CATEGORIES = [
+  { label: 'Running', emoji: '\u{1F3C3}' },
+  { label: 'Cycling', emoji: '\u{1F6B4}' },
+  { label: 'Walking', emoji: '\u{1F97E}' },
+  { label: 'Yoga', emoji: '\u{1F9D8}' },
+  { label: 'Football', emoji: '\u26BD' },
+  { label: 'Book Club', emoji: '\u{1F4DA}' },
+  { label: 'Social', emoji: '\u{1F37D}\uFE0F' },
+  { label: 'Photography', emoji: '\u{1F4F7}' },
+  { label: 'Volunteer', emoji: '\u{1F91D}' },
+  { label: 'Dog Walking', emoji: '\u{1F415}' },
+  { label: 'Knitting', emoji: '\u{1F9F6}' },
+  { label: 'Other', emoji: '\u2728' },
+]
+
 interface Props {
   group: {
     id: string
@@ -29,15 +44,32 @@ interface Props {
   badgeAnnouncementsEnabled: boolean
   watermarkPhotos: boolean
   location: string
+  groupProfile: {
+    name: string
+    tagline: string
+    description: string
+    category: string
+    isPublic: boolean
+    joinApprovalRequired: boolean
+  }
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function SettingsClient({ group, stripe, membershipFee, dmEnabled: initialDmEnabled, tierTheme: initialTierTheme, badgeAnnouncementsEnabled: initialBadgeAnnounce, watermarkPhotos: initialWatermark, location: initialLocation }: Props) {
+export default function SettingsClient({ group, stripe, membershipFee, dmEnabled: initialDmEnabled, tierTheme: initialTierTheme, badgeAnnouncementsEnabled: initialBadgeAnnounce, watermarkPhotos: initialWatermark, location: initialLocation, groupProfile }: Props) {
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [toast, setToast] = useState('')
+
+  // Group profile state
+  const [profileName, setProfileName] = useState(groupProfile.name)
+  const [profileTagline, setProfileTagline] = useState(groupProfile.tagline)
+  const [profileDescription, setProfileDescription] = useState(groupProfile.description)
+  const [profileCategory, setProfileCategory] = useState(groupProfile.category)
+  const [profilePublic, setProfilePublic] = useState(groupProfile.isPublic)
+  const [profileApproval, setProfileApproval] = useState(groupProfile.joinApprovalRequired)
+  const [profileSaving, setProfileSaving] = useState(false)
 
   // DM state
   const [dmOn, setDmOn] = useState(initialDmEnabled)
@@ -233,6 +265,37 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
     setLocationSaving(false)
   }
 
+  async function handleSaveProfile() {
+    if (!profileName.trim()) {
+      setToast('Group name is required')
+      return
+    }
+    setProfileSaving(true)
+    try {
+      const res = await fetch(`/api/groups/${group.slug}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: profileName,
+          tagline: profileTagline,
+          description: profileDescription,
+          category: profileCategory,
+          is_public: profilePublic,
+          join_approval_required: profileApproval,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setToast(data.error || 'Failed to save')
+      } else {
+        setToast('Group profile updated')
+      }
+    } catch {
+      setToast('Network error. Please try again.')
+    }
+    setProfileSaving(false)
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -260,6 +323,136 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
             <p className="text-sm text-teal-800">{toast}</p>
           </div>
         )}
+
+        {/* ── Group Profile ──────────────────────────────────────── */}
+        <section className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center">
+              <svg className="w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-900">Group Profile</p>
+              <p className="text-xs text-gray-500">Name, category, description, and visibility</p>
+            </div>
+          </div>
+
+          <div className="px-5 py-5 space-y-4">
+            {/* Name */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1.5">Group name</label>
+              <input
+                type="text"
+                value={profileName}
+                onChange={(e) => setProfileName(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500"
+              />
+            </div>
+
+            {/* Tagline */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1.5">Tagline</label>
+              <input
+                type="text"
+                value={profileTagline}
+                onChange={(e) => setProfileTagline(e.target.value)}
+                placeholder="A short description of your group"
+                maxLength={120}
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500"
+              />
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-1.5">Description</label>
+              <textarea
+                value={profileDescription}
+                onChange={(e) => setProfileDescription(e.target.value)}
+                placeholder="Tell people what your group is about..."
+                rows={3}
+                maxLength={500}
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-900 placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 resize-none"
+              />
+            </div>
+
+            {/* Category */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-2">Category</label>
+              <div className="flex flex-wrap gap-2">
+                {CATEGORIES.map(({ label, emoji }) => {
+                  const active = profileCategory === label
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => setProfileCategory(label)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${
+                        active
+                          ? 'text-white border-transparent'
+                          : 'text-gray-600 border-gray-200 hover:border-gray-300 bg-white'
+                      }`}
+                      style={active ? { backgroundColor: group.colour } : undefined}
+                    >
+                      {emoji} {label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Visibility toggle */}
+            <label className="flex items-center justify-between cursor-pointer">
+              <div>
+                <span className="text-sm font-medium text-gray-700">Public group</span>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {profilePublic ? 'Visible on the discovery page' : 'Only accessible via direct link'}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={profilePublic}
+                onClick={() => setProfilePublic(!profilePublic)}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                  profilePublic ? 'bg-teal-500' : 'bg-gray-200'
+                }`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${profilePublic ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </label>
+
+            {/* Join approval toggle */}
+            <label className="flex items-center justify-between cursor-pointer">
+              <div>
+                <span className="text-sm font-medium text-gray-700">Require approval to join</span>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {profileApproval ? 'New members need admin approval' : 'Anyone can join instantly'}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={profileApproval}
+                onClick={() => setProfileApproval(!profileApproval)}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                  profileApproval ? 'bg-teal-500' : 'bg-gray-200'
+                }`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm ${profileApproval ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </label>
+
+            <button
+              onClick={handleSaveProfile}
+              disabled={profileSaving}
+              className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+              style={{ backgroundColor: group.colour }}
+            >
+              {profileSaving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </section>
 
         {/* ── Location ────────────────────────────────────────────── */}
         <section className="bg-white rounded-2xl border border-gray-100 overflow-hidden">

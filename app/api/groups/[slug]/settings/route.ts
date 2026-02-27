@@ -51,6 +51,14 @@ export async function POST(
     // Build update object from valid fields
     const updates: Record<string, unknown> = {}
 
+    // Group profile fields
+    if (typeof body.name === 'string' && body.name.trim()) updates.name = body.name.trim()
+    if (typeof body.tagline === 'string') updates.tagline = body.tagline.trim() || null
+    if (typeof body.description === 'string') updates.description = body.description.trim() || null
+    if (typeof body.category === 'string') updates.category = body.category || null
+    if (typeof body.is_public === 'boolean') updates.is_public = body.is_public
+    if (typeof body.join_approval_required === 'boolean') updates.join_approval_required = body.join_approval_required
+
     if (typeof body.allow_dm === 'boolean') updates.allow_dm = body.allow_dm
     if (typeof body.tier_theme === 'string') updates.tier_theme = body.tier_theme
     if (typeof body.badge_announcements_enabled === 'boolean') {

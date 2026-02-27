@@ -89,7 +89,7 @@ export default async function SettingsPage({
   const serviceClient = createServiceClient()
   const { data: groupFeeData } = await serviceClient
     .from('groups')
-    .select('membership_fee_enabled, membership_fee_pence, allow_dm, tier_theme, badge_announcements_enabled, watermark_photos, location')
+    .select('membership_fee_enabled, membership_fee_pence, allow_dm, tier_theme, badge_announcements_enabled, watermark_photos, location, tagline, description, category, is_public, join_approval_required')
     .eq('id', group.id)
     .single()
 
@@ -120,6 +120,14 @@ export default async function SettingsPage({
       badgeAnnouncementsEnabled={groupFeeData?.badge_announcements_enabled ?? true}
       watermarkPhotos={groupFeeData?.watermark_photos ?? false}
       location={groupFeeData?.location ?? ''}
+      groupProfile={{
+        name: group.name,
+        tagline: groupFeeData?.tagline ?? '',
+        description: groupFeeData?.description ?? '',
+        category: groupFeeData?.category ?? '',
+        isPublic: groupFeeData?.is_public ?? true,
+        joinApprovalRequired: groupFeeData?.join_approval_required ?? false,
+      }}
     />
   )
 }
