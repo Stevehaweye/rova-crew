@@ -159,6 +159,22 @@ export default async function AdminPage({
 
   const stripeConnected = stripeAccount?.charges_enabled === true
 
+  // ── Monthly revenue ────────────────────────────────────────────────────────
+  let monthlyRevenuePence = 0
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
+  const { data: payments } = await supabase
+    .from('payments')
+    .select('amount_pence')
+    .eq('group_id', group.id)
+    .eq('status', 'paid')
+    .gte('created_at', monthStart)
+
+  if (payments) {
+    for (const p of payments) {
+      monthlyRevenuePence += p.amount_pence ?? 0
+    }
+  }
+
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
 
   return (
@@ -170,6 +186,7 @@ export default async function AdminPage({
       recentMembers={recentMembers}
       appUrl={appUrl}
       stripeConnected={stripeConnected}
+      monthlyRevenuePence={monthlyRevenuePence}
       healthData={healthData}
       upcomingEvents={upcomingEvents.map((e) => ({
         id: e.id,

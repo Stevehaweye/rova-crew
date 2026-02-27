@@ -47,6 +47,7 @@ export default function PhotosClient({
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState('')
+  const [uploadError, setUploadError] = useState('')
   const [consentLevel, setConsentLevel] = useState(initialConsent)
   const [showConsent, setShowConsent] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
@@ -117,6 +118,7 @@ export default function PhotosClient({
 
   async function uploadFiles(files: File[]) {
     setUploading(true)
+    setUploadError('')
     let uploaded = 0
 
     for (const file of files) {
@@ -144,9 +146,12 @@ export default function PhotosClient({
 
         if (res.ok && data.success) {
           uploaded++
+        } else if (data.error) {
+          setUploadError(data.error)
         }
       } catch (err) {
         console.error('[photos] upload error:', err)
+        setUploadError('Network error. Please try again.')
       }
     }
 
@@ -220,6 +225,13 @@ export default function PhotosClient({
             {' · '}{group.name}
           </p>
         </div>
+
+        {/* Upload error */}
+        {uploadError && (
+          <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 mb-5">
+            <p className="text-sm text-red-700">{uploadError}</p>
+          </div>
+        )}
 
         {/* Loading state */}
         {loading && (

@@ -342,12 +342,21 @@ export default async function AdminEventsPage({
                       View
                     </Link>
                     {!isPast && (
-                      <Link
-                        href={`/g/${group.slug}/admin/events/${ev.id}/edit`}
-                        className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-                      >
-                        Edit
-                      </Link>
+                      <>
+                        <Link
+                          href={`/g/${group.slug}/admin/events/${ev.id}/edit`}
+                          className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                        >
+                          Edit
+                        </Link>
+                        <Link
+                          href={`/g/${group.slug}/admin/events/${ev.id}/checkin`}
+                          className="text-xs font-semibold px-2.5 py-1.5 rounded-lg text-white transition-opacity hover:opacity-90"
+                          style={{ backgroundColor: colour }}
+                        >
+                          Check In
+                        </Link>
+                      </>
                     )}
                     {isPast && (
                       <Link
@@ -355,7 +364,7 @@ export default async function AdminEventsPage({
                         className="text-xs font-semibold px-2.5 py-1.5 rounded-lg text-white transition-opacity hover:opacity-90"
                         style={{ backgroundColor: colour }}
                       >
-                        📊 Report
+                        Report
                       </Link>
                     )}
                   </div>

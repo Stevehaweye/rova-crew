@@ -52,6 +52,7 @@ export default function ConsentPrompt({
   const [selected, setSelected] = useState<ConsentLevel | null>(null)
   const [saving, setSaving] = useState(false)
   const [show, setShow] = useState(false)
+  const [error, setError] = useState('')
 
   // Animate in
   useEffect(() => {
@@ -62,6 +63,7 @@ export default function ConsentPrompt({
   async function handleContinue() {
     if (!selected) return
     setSaving(true)
+    setError('')
 
     try {
       const res = await fetch('/api/photos/consent', {
@@ -73,9 +75,12 @@ export default function ConsentPrompt({
       if (res.ok) {
         onComplete(selected)
       } else {
+        const data = await res.json().catch(() => null)
+        setError(data?.error || 'Failed to save preference. Please try again.')
         setSaving(false)
       }
     } catch {
+      setError('Network error. Please try again.')
       setSaving(false)
     }
   }
@@ -161,6 +166,9 @@ export default function ConsentPrompt({
 
         {/* Footer */}
         <div className="px-5 pb-5 pt-2">
+          {error && (
+            <p className="text-xs text-red-500 text-center mb-2">{error}</p>
+          )}
           <button
             onClick={handleContinue}
             disabled={!selected || saving}

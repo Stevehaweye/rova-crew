@@ -61,6 +61,7 @@ export interface AdminData {
   appUrl: string
   upcomingEvents: UpcomingEvent[]
   stripeConnected: boolean
+  monthlyRevenuePence: number
   healthData: HealthScoreData | null
 }
 
@@ -801,6 +802,7 @@ export default function AdminShell({
   appUrl,
   upcomingEvents,
   stripeConnected,
+  monthlyRevenuePence,
   healthData,
 }: AdminData) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -936,11 +938,13 @@ export default function AdminShell({
 
               {/* Monthly Revenue */}
               <StatCard icon={<PoundIcon />} label="Monthly Revenue" accentColor="#059669">
-                <p className="text-3xl font-black text-gray-900">£0.00</p>
-                <p className="mt-1.5">
-                  <span className="text-[10px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                    Unlocks Week 4
-                  </span>
+                <p className="text-3xl font-black text-gray-900">
+                  £{(monthlyRevenuePence / 100).toFixed(2)}
+                </p>
+                <p className="text-xs text-gray-400 mt-1.5">
+                  {monthlyRevenuePence > 0
+                    ? 'This month from event tickets'
+                    : 'No revenue this month'}
                 </p>
               </StatCard>
 
