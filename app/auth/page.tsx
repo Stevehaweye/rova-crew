@@ -1,7 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+
+interface CompanyBranding {
+  name: string
+  logo_url: string | null
+  primary_colour: string
+  domains: string[]
+}
 
 type Tab = 'signin' | 'signup'
 type FormState = 'idle' | 'loading' | 'success' | 'error'
@@ -115,11 +123,39 @@ function SuccessState({ email, onReset }: { email: string; onReset: () => void }
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AuthPage() {
+  return (
+    <Suspense>
+      <AuthPageInner />
+    </Suspense>
+  )
+}
+
+function AuthPageInner() {
+  const searchParams = useSearchParams()
   const [tab, setTab] = useState<Tab>('signin')
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
   const [formState, setFormState] = useState<FormState>('idle')
   const [errorMsg, setErrorMsg] = useState('')
+  const [company, setCompany] = useState<CompanyBranding | null>(null)
+
+  // Fetch company branding if ?company=slug is present
+  useEffect(() => {
+    const slug = searchParams.get('company')
+    if (!slug) return
+
+    async function fetchCompany() {
+      try {
+        const res = await fetch(`/api/company/branding?slug=${encodeURIComponent(slug!)}`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.company) setCompany(data.company)
+      } catch {
+        // Ignore — fall back to default branding
+      }
+    }
+    fetchCompany()
+  }, [searchParams])
 
   function reset() {
     setFormState('idle')
@@ -221,25 +257,46 @@ export default function AuthPage() {
           {/* Card */}
           <div className="bg-white rounded-2xl shadow-xl shadow-gray-200/60 px-8 py-10 lg:px-10">
 
-            {/* Logo */}
+            {/* Logo / Company branding */}
             <div className="text-center mb-8">
-              <div className="select-none">
-                <span
-                  className="text-[1.75rem] font-black tracking-[0.16em]"
-                  style={{ color: '#0D7377' }}
-                >
-                  ROVA
-                </span>
-                <span
-                  className="text-[1.75rem] font-black tracking-[0.16em]"
-                  style={{ color: '#C9982A' }}
-                >
-                  CREW
-                </span>
-              </div>
-              <p className="text-gray-400 text-xs mt-1.5 tracking-wide">
-                Your community. Organised.
-              </p>
+              {company ? (
+                <div>
+                  {company.logo_url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={company.logo_url}
+                      alt={company.name}
+                      className="w-14 h-14 rounded-xl mx-auto mb-3 object-cover"
+                    />
+                  )}
+                  <p className="text-lg font-bold text-gray-900">{company.name}</p>
+                  <p className="text-gray-400 text-xs mt-1 tracking-wide">
+                    Powered by{' '}
+                    <span className="font-black" style={{ color: '#0D7377' }}>ROVA</span>
+                    <span className="font-black" style={{ color: '#C9982A' }}>CREW</span>
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <div className="select-none">
+                    <span
+                      className="text-[1.75rem] font-black tracking-[0.16em]"
+                      style={{ color: '#0D7377' }}
+                    >
+                      ROVA
+                    </span>
+                    <span
+                      className="text-[1.75rem] font-black tracking-[0.16em]"
+                      style={{ color: '#C9982A' }}
+                    >
+                      CREW
+                    </span>
+                  </div>
+                  <p className="text-gray-400 text-xs mt-1.5 tracking-wide">
+                    Your community. Organised.
+                  </p>
+                </div>
+              )}
             </div>
 
             {formState === 'success' ? (
@@ -303,7 +360,7 @@ export default function AuthPage() {
                       autoComplete="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@example.com"
+                      placeholder={company?.domains?.[0] ? `you@${company.domains[0]}` : 'you@example.com'}
                       required
                       className="w-full px-4 py-3 rounded-lg border border-gray-200 text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0D7377] focus:border-transparent transition"
                     />

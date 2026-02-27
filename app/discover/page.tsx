@@ -55,6 +55,49 @@ export default async function DiscoverPage() {
 
   const svc = createServiceClient()
 
+  let userCompany: { id: string; name: string } | null = null
+  let userCompanyGroupIds: string[] = []
+
+  if (user) {
+    const { data: profile } = await svc
+      .from('profiles')
+      .select('company_id, work_location, department')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    if (profile?.company_id) {
+      const { data: company } = await svc
+        .from('companies')
+        .select('id, name')
+        .eq('id', profile.company_id)
+        .maybeSingle()
+
+      if (company) {
+        userCompany = company
+
+        // Fetch company-scoped groups visible to this user
+        const { data: scopes } = await svc
+          .from('group_scope')
+          .select('group_id, scope_type, scope_location, scope_department')
+          .eq('company_id', company.id)
+
+        for (const s of scopes ?? []) {
+          let visible = false
+          if (s.scope_type === 'company') visible = true
+          else if (s.scope_type === 'location' && profile.work_location && s.scope_location) {
+            visible = profile.work_location.toLowerCase().trim() === s.scope_location.toLowerCase().trim()
+          } else if (s.scope_type === 'department' && profile.department && s.scope_department) {
+            visible = profile.department.toLowerCase().trim() === s.scope_department.toLowerCase().trim()
+          } else if (s.scope_type === 'loc_dept' && profile.work_location && profile.department && s.scope_location && s.scope_department) {
+            visible = profile.work_location.toLowerCase().trim() === s.scope_location.toLowerCase().trim() &&
+                      profile.department.toLowerCase().trim() === s.scope_department.toLowerCase().trim()
+          }
+          if (visible) userCompanyGroupIds.push(s.group_id)
+        }
+      }
+    }
+  }
+
   // Parallel fetches: public groups, global stats, trending, upcoming events for JSON-LD
   const now = new Date().toISOString()
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
@@ -186,6 +229,44 @@ export default async function DiscoverPage() {
     }
   }
 
+  let companyGroups: typeof sortedGroups = []
+  if (userCompanyGroupIds.length > 0) {
+    const { data: cGroups } = await svc
+      .from('groups')
+      .select('id, name, slug, tagline, category, logo_url, hero_url, hero_focal_x, hero_focal_y, primary_colour, location')
+      .in('id', userCompanyGroupIds)
+
+    if (cGroups && cGroups.length > 0) {
+      const cIds = cGroups.map(g => g.id)
+      const { data: cMembers } = await svc
+        .from('group_members')
+        .select('group_id')
+        .in('group_id', cIds)
+        .eq('status', 'approved')
+
+      const cCounts: Record<string, number> = {}
+      for (const r of cMembers ?? []) {
+        cCounts[r.group_id] = (cCounts[r.group_id] ?? 0) + 1
+      }
+
+      companyGroups = cGroups.map(g => ({
+        id: g.id,
+        name: g.name,
+        slug: g.slug,
+        tagline: g.tagline,
+        category: g.category,
+        logoUrl: g.logo_url,
+        heroUrl: g.hero_url,
+        heroFocalX: g.hero_focal_x ?? 50,
+        heroFocalY: g.hero_focal_y ?? 50,
+        primaryColour: g.primary_colour.startsWith('#') ? g.primary_colour : `#${g.primary_colour}`,
+        memberCount: cCounts[g.id] ?? 0,
+        nextEventDate: nextEvents[g.id] ?? null,
+        location: g.location,
+      })).sort((a, b) => b.memberCount - a.memberCount)
+    }
+  }
+
   const stats = {
     communities: groups.length,
     members: memberCountResult.count ?? 0,
@@ -254,6 +335,8 @@ export default async function DiscoverPage() {
       groups={sortedGroups}
       trendingGroups={trendingGroups}
       recommendedGroups={recommendedGroups}
+      companyGroups={companyGroups}
+      companyName={userCompany?.name ?? null}
       stats={stats}
       isLoggedIn={!!user}
       jsonLd={JSON.stringify(jsonLd)}

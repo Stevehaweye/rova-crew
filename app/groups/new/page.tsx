@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useRef, type FormEvent } from 'react'
+import { useState, useRef, useEffect, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { parsePhoneNumbers, generateWhatsAppUrl, isValidPhone } from '@/lib/phone-utils'
+import ScopePicker, { type GroupScopeInput } from '@/components/groups/ScopePicker'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -204,7 +205,16 @@ function Toggle({
 
 // ─── Live Preview ─────────────────────────────────────────────────────────────
 
-function LivePreview({ form }: { form: GroupForm }) {
+const SCOPE_LABELS: Record<string, string> = {
+  public: 'Public',
+  company: 'Company',
+  location: 'Location',
+  department: 'Department',
+  loc_dept: 'Team',
+  invitation: 'Invite only',
+}
+
+function LivePreview({ form, scopeType }: { form: GroupForm; scopeType: string }) {
   const displayName = form.name || 'Your Group Name'
   const displayTagline = form.tagline || 'A tagline for your community'
   const initial = (form.name[0] ?? 'G').toUpperCase()
@@ -269,7 +279,7 @@ function LivePreview({ form }: { form: GroupForm }) {
               </span>
             )}
             <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 font-medium flex items-center gap-1">
-              {form.isPublic ? <><GlobeIcon /> Public</> : <><LockIcon /> Private</>}
+              {scopeType === 'public' ? <><GlobeIcon /> Public</> : <><LockIcon /> {SCOPE_LABELS[scopeType] ?? 'Private'}</>}
             </span>
             <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-500 font-medium">
               1 member
@@ -584,6 +594,40 @@ export default function NewGroupPage() {
     requireApproval: false,
   })
 
+  const [userCompany, setUserCompany] = useState<{ id: string; name: string; member_count: number } | null>(null)
+  const [userLocation, setUserLocation] = useState<string | null>(null)
+  const [userDepartment, setUserDepartment] = useState<string | null>(null)
+  const [scope, setScope] = useState<GroupScopeInput>({ scopeType: 'public' })
+  const [profileLoaded, setProfileLoaded] = useState(false)
+
+  useEffect(() => {
+    async function loadProfile() {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('company_id, work_location, department')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (profile?.company_id) {
+        const { data: company } = await supabase
+          .from('companies')
+          .select('id, name, member_count')
+          .eq('id', profile.company_id)
+          .maybeSingle()
+
+        if (company) setUserCompany(company)
+        setUserLocation(profile.work_location)
+        setUserDepartment(profile.department)
+      }
+      setProfileLoaded(true)
+    }
+    loadProfile()
+  }, [])
+
   // ── Patch helper ──────────────────────────────────────────────────────────
 
   function patch(updates: Partial<GroupForm>) {
@@ -683,6 +727,9 @@ export default function NewGroupPage() {
         }
       }
 
+      // Determine isPublic from scope
+      const isPublic = scope.scopeType === 'public'
+
       // Create group via API (service client bypasses RLS)
       const createRes = await fetch('/api/groups', {
         method: 'POST',
@@ -696,12 +743,28 @@ export default function NewGroupPage() {
           location: form.location.trim() || null,
           logoUrl,
           primaryColour: form.colour,
-          isPublic: form.isPublic,
-          joinApprovalRequired: form.requireApproval,
+          isPublic,
+          joinApprovalRequired: scope.scopeType === 'invitation' ? true : form.requireApproval,
         }),
       })
       const createData = await createRes.json()
       if (!createRes.ok) throw new Error(createData.error || 'Failed to create group')
+
+      // Insert group_scope row for company-scoped groups
+      if (scope.scopeType !== 'public' && scope.scopeType !== 'invitation' && scope.companyId) {
+        const { error: scopeErr } = await supabase
+          .from('group_scope')
+          .insert({
+            group_id: createData.groupId,
+            scope_type: scope.scopeType,
+            company_id: scope.companyId,
+            scope_location: scope.scopeLocation || null,
+            scope_department: scope.scopeDepartment || null,
+          })
+        if (scopeErr) {
+          console.error('[groups/new] scope insert error:', scopeErr)
+        }
+      }
 
       if (tab === 'migrate') {
         setCreatedGroup({ id: createData.groupId, slug: createData.slug, name: form.name.trim() })
@@ -1067,23 +1130,29 @@ export default function NewGroupPage() {
 
               <Divider />
 
-              {/* ── Section 03: Settings ─────────────────────────────── */}
-              <SectionHeader n="03" title="Settings" sub="Privacy and access controls" />
+              {/* ── Section 03: Visibility ────────────────────────────── */}
+              <SectionHeader n="03" title="Visibility" sub="Who can discover and join this group" />
 
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 divide-y divide-gray-100">
-                <Toggle
-                  checked={form.isPublic}
-                  onChange={(v) => patch({ isPublic: v })}
-                  label="Public group"
-                  description="Public groups appear in discovery and can be found by anyone searching ROVA Crew."
+              {profileLoaded && (
+                <ScopePicker
+                  userCompany={userCompany}
+                  userLocation={userLocation}
+                  userDepartment={userDepartment}
+                  onChange={setScope}
                 />
-                <Toggle
-                  checked={form.requireApproval}
-                  onChange={(v) => patch({ requireApproval: v })}
-                  label="Require approval to join"
-                  description="New members must be approved by an admin before they can access group content."
-                />
-              </div>
+              )}
+
+              {/* Approval toggle - only shown for non-invitation scopes */}
+              {scope.scopeType !== 'invitation' && (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 mt-4">
+                  <Toggle
+                    checked={form.requireApproval}
+                    onChange={(v) => patch({ requireApproval: v })}
+                    label="Require approval to join"
+                    description="New members must be approved by an admin before they can access group content."
+                  />
+                </div>
+              )}
 
               {/* ── Submit ───────────────────────────────────────────── */}
               <div className="mt-10">
@@ -1117,7 +1186,7 @@ export default function NewGroupPage() {
               {/* Mobile preview — below form */}
               <div className="mt-14 lg:hidden">
                 <div className="border-t border-gray-200 pt-10">
-                  <LivePreview form={form} />
+                  <LivePreview form={form} scopeType={scope.scopeType} />
                 </div>
               </div>
             </form>
@@ -1126,7 +1195,7 @@ export default function NewGroupPage() {
                 DESKTOP STICKY PREVIEW
             ════════════════════════════════════════════════════════════ */}
             <div className="hidden lg:block lg:sticky lg:top-28">
-              <LivePreview form={form} />
+              <LivePreview form={form} scopeType={scope.scopeType} />
             </div>
           </div>
         )}

@@ -112,5 +112,5 @@ export default async function RootPage() {
     eventsThisMonth: eventCountResult.count ?? 0,
   }
 
-  return <DiscoveryClient groups={sortedGroups} stats={stats} />
+  return <DiscoveryClient groups={sortedGroups} stats={stats} companyGroups={[]} companyName={null} />
 }

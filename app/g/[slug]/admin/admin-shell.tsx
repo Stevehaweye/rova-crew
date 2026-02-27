@@ -398,16 +398,13 @@ function WelcomeBanner({
             Show QR code &amp; more options &rarr;
           </button>
 
-          {/* WhatsApp — placeholder */}
-          <button
-            disabled
-            className="flex items-center gap-1.5 text-white/40 text-sm font-semibold cursor-not-allowed"
+          {/* WhatsApp migration */}
+          <Link
+            href="/migrate"
+            className="flex items-center gap-1.5 text-white/80 hover:text-white text-sm font-semibold transition-colors"
           >
             📱 Send WhatsApp migration message →
-            <span className="text-[10px] bg-white/15 text-white/50 px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider">
-              Week 6
-            </span>
-          </button>
+          </Link>
         </div>
       </div>
     </div>
@@ -424,7 +421,7 @@ const NAV_ITEMS = [
   { icon: '💬', label: 'Chat',           key: 'chat',          available: true  },
   { icon: '📢', label: 'Blast',          key: 'blast',         available: true  },
   { icon: '🏆', label: 'Gamification',   key: 'gamification',  available: true  },
-  { icon: '📸', label: 'Photos',         key: 'photos',        available: false },
+  { icon: '📸', label: 'Photos',         key: 'photos',        available: true  },
   { icon: '⚙️', label: 'Settings',       key: 'settings',      available: true  },
 ]
 
@@ -436,6 +433,7 @@ const NAV_ROUTES: Record<string, (slug: string) => string> = {
   chat: (slug) => `/g/${slug}/chat`,
   blast: (slug) => `/g/${slug}/admin/blast`,
   gamification: (slug) => `/g/${slug}/admin/gamification`,
+  photos: (slug) => `/g/${slug}/photos`,
   settings: (slug) => `/g/${slug}/admin/settings`,
 }
 
@@ -991,9 +989,9 @@ export default function AdminShell({
                 <QuickActionCard
                   emoji="📱"
                   label="Get Your Flyer"
-                  description="Download a branded promo flyer"
-                  disabled
-                  comingSoon="Week 6"
+                  description={upcomingEvents.length > 0 ? `Download flyer for ${upcomingEvents[0].title}` : 'Create an event first to generate a flyer'}
+                  href={upcomingEvents.length > 0 ? `/events/${upcomingEvents[0].id}` : undefined}
+                  disabled={upcomingEvents.length === 0}
                 />
               </div>
             </div>

@@ -33,6 +33,8 @@ interface Props {
   groups: GroupCard[]
   trendingGroups?: GroupCard[]
   recommendedGroups?: GroupCard[]
+  companyGroups: GroupCard[]
+  companyName: string | null
   stats: { communities: number; members: number; eventsThisMonth: number }
   isLoggedIn?: boolean
   jsonLd?: string
@@ -625,7 +627,7 @@ function Footer() {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function DiscoveryClient({ groups, trendingGroups, recommendedGroups, stats, isLoggedIn, jsonLd, upcomingEvents }: Props) {
+export default function DiscoveryClient({ groups, trendingGroups, recommendedGroups, companyGroups, companyName, stats, isLoggedIn, jsonLd, upcomingEvents }: Props) {
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
   const [sortBy, setSortBy] = useState<'most_active' | 'newest' | 'most_members'>('most_active')
@@ -696,8 +698,25 @@ export default function DiscoveryClient({ groups, trendingGroups, recommendedGro
       {/* Upcoming events — only show when no active filter */}
       {!hasActiveFilter && upcomingEvents && upcomingEvents.length > 0 && <UpcomingEventsSection events={upcomingEvents} />}
 
+      {/* Company groups section */}
+      {!hasActiveFilter && companyName && companyGroups.length > 0 && (
+        <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12 mb-10">
+          <h2 className="text-lg font-bold text-gray-900 mb-4">
+            {companyName} groups
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {companyGroups.map((group) => (
+              <GroupCardComponent key={group.id} group={group} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Groups grid */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+        {!hasActiveFilter && companyName && companyGroups.length > 0 && (
+          <h2 className="text-lg font-bold text-gray-900 mb-4">Open to everyone</h2>
+        )}
         <div className="flex items-center justify-between mb-4">
           {hasActiveFilter ? (
             <p className="text-xs text-gray-400">

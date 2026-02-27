@@ -10,11 +10,17 @@ export default function UserMenu({
   avatarUrl,
   initials,
   groupSlug,
+  isAdmin,
+  companySlug,
+  companyName,
 }: {
   name: string
   avatarUrl: string | null
   initials: string
   groupSlug?: string | null
+  isAdmin?: boolean
+  companySlug?: string | null
+  companyName?: string | null
 }) {
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -62,6 +68,25 @@ export default function UserMenu({
 
       {open && (
         <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl border border-gray-100 shadow-lg py-1 z-50">
+          {isAdmin && (
+            <Link
+              href="/platform-admin"
+              onClick={() => setOpen(false)}
+              className="block px-4 py-2.5 text-sm font-semibold hover:bg-gray-50 transition-colors"
+              style={{ color: '#0D7377' }}
+            >
+              Platform Admin
+            </Link>
+          )}
+          {companySlug && companyName && (
+            <Link
+              href={`/company/${companySlug}`}
+              onClick={() => setOpen(false)}
+              className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              {companyName}
+            </Link>
+          )}
           {groupSlug && (
             <Link
               href={`/g/${groupSlug}/my-stats`}
@@ -71,6 +96,13 @@ export default function UserMenu({
               My Progress
             </Link>
           )}
+          <Link
+            href="/settings/account"
+            onClick={() => setOpen(false)}
+            className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            Account settings
+          </Link>
           <Link
             href="/settings/notifications"
             onClick={() => setOpen(false)}

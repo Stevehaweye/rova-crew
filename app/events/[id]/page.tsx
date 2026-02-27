@@ -95,6 +95,115 @@ export default async function EventPage({
   // Use service client for data queries to bypass RLS
   const svc = createServiceClient()
 
+  // ── Scope gating: check if this event's group has a scope restriction ──
+  const { data: scopeRow } = await svc
+    .from('group_scope')
+    .select('scope_type, company_id, scope_location, scope_department')
+    .eq('group_id', event.group_id)
+    .maybeSingle()
+
+  const isPublicScope = !scopeRow || scopeRow.scope_type === 'public'
+
+  if (!isPublicScope) {
+    // Company-scoped event — check access
+    if (!user) {
+      // Not authenticated → gated view
+      const colour = group.primary_colour.startsWith('#') ? group.primary_colour : `#${group.primary_colour}`
+      const { data: scopeCompany } = scopeRow.company_id
+        ? await svc.from('companies').select('name').eq('id', scopeRow.company_id).maybeSingle()
+        : { data: null }
+      const companyName = scopeCompany?.name ?? 'this company'
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center px-6">
+          <div className="text-center max-w-sm">
+            <div className="text-7xl mb-6 select-none">🔒</div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">{event.title}</h1>
+            <p className="text-sm text-gray-500 mb-1">
+              {new Date(event.starts_at).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </p>
+            <p className="text-gray-500 mb-8 leading-relaxed">
+              This event is only open to {companyName} employees. Sign in with your work email to view and RSVP.
+            </p>
+            <Link
+              href="/auth"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-white font-semibold text-sm"
+              style={{ backgroundColor: colour }}
+            >
+              Sign in &rarr;
+            </Link>
+          </div>
+        </div>
+      )
+    }
+
+    // Authenticated — check if user matches scope
+    const { data: userProfile } = await svc
+      .from('profiles')
+      .select('company_id, work_location, department')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    let canAccess = false
+    if (userProfile && userProfile.company_id === scopeRow.company_id) {
+      if (scopeRow.scope_type === 'company') {
+        canAccess = true
+      } else if (scopeRow.scope_type === 'location') {
+        canAccess = !!(userProfile.work_location && scopeRow.scope_location &&
+          userProfile.work_location.toLowerCase().trim() === scopeRow.scope_location.toLowerCase().trim())
+      } else if (scopeRow.scope_type === 'department') {
+        canAccess = !!(userProfile.department && scopeRow.scope_department &&
+          userProfile.department.toLowerCase().trim() === scopeRow.scope_department.toLowerCase().trim())
+      } else if (scopeRow.scope_type === 'loc_dept') {
+        canAccess = !!(userProfile.work_location && userProfile.department &&
+          scopeRow.scope_location && scopeRow.scope_department &&
+          userProfile.work_location.toLowerCase().trim() === scopeRow.scope_location.toLowerCase().trim() &&
+          userProfile.department.toLowerCase().trim() === scopeRow.scope_department.toLowerCase().trim())
+      }
+    }
+
+    // Also allow if user is a member of the group
+    if (!canAccess) {
+      const { data: membership } = await svc
+        .from('group_members')
+        .select('status')
+        .eq('group_id', event.group_id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (membership?.status === 'approved') canAccess = true
+    }
+
+    if (!canAccess) {
+      const { data: scopeCompany } = scopeRow.company_id
+        ? await svc.from('companies').select('name').eq('id', scopeRow.company_id).maybeSingle()
+        : { data: null }
+      const scopeDesc = scopeRow.scope_type === 'company'
+        ? `${scopeCompany?.name ?? 'this company'} employees`
+        : scopeRow.scope_type === 'location'
+        ? `${scopeCompany?.name ?? 'company'} employees at ${scopeRow.scope_location}`
+        : scopeRow.scope_type === 'department'
+        ? `${scopeCompany?.name ?? 'company'} ${scopeRow.scope_department} employees`
+        : `${scopeCompany?.name ?? 'company'} ${scopeRow.scope_department} employees at ${scopeRow.scope_location}`
+      return (
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center px-6">
+          <div className="text-center max-w-sm">
+            <div className="text-7xl mb-6 select-none">🔒</div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-3">Access restricted</h1>
+            <p className="text-gray-500 mb-8 leading-relaxed">
+              This event is only available to {scopeDesc}.
+            </p>
+            <Link
+              href="/home"
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-white font-semibold text-sm"
+              style={{ backgroundColor: '#0D7377' }}
+            >
+              Go home &rarr;
+            </Link>
+          </div>
+        </div>
+      )
+    }
+  }
+
   // Parallel fetches: RSVP counts, initial RSVPs, guest RSVPs, user's RSVP, user profile
   const [
     goingCountResult,

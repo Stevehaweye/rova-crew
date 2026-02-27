@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { lookupCompanyByEmail, type CompanyRecord } from '@/lib/company'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -400,9 +401,120 @@ function Spinner() {
   )
 }
 
-// ─── Step names (for screen readers / labels) ─────────────────────────────────
+// ─── Step 1.5: Work Details (enterprise) ─────────────────────────────────────
 
-const STEP_LABELS = ['Your Profile', 'Your Interests', 'Find Your Crew']
+interface StepWorkDetailsProps {
+  companyName: string
+  workLocation: string
+  department: string
+  onWorkLocationChange: (v: string) => void
+  onDepartmentChange: (v: string) => void
+  onContinue: () => void
+}
+
+function StepWorkDetails({ companyName, workLocation, department, onWorkLocationChange, onDepartmentChange, onContinue }: StepWorkDetailsProps) {
+  const canContinue = workLocation.trim().length >= 2 && department.trim().length >= 2
+
+  return (
+    <div className="px-5 pt-2 pb-10">
+      <h1 className="text-2xl font-bold text-gray-900 mb-1">Tell us about your role at {companyName}</h1>
+      <p className="text-gray-500 text-sm mb-8">This helps you discover clubs relevant to your office and team. Both fields are required.</p>
+
+      <div className="space-y-5">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            Which office or location are you based at? <span className="text-red-400">*</span>
+          </label>
+          <input
+            type="text"
+            value={workLocation}
+            onChange={(e) => onWorkLocationChange(e.target.value)}
+            placeholder="e.g. Dublin, London, New York"
+            className="w-full px-4 py-3.5 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0D7377] focus:border-transparent transition"
+          />
+          <p className="text-xs text-gray-400 mt-1.5">Type your office city or location name.</p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            Which department or team are you in? <span className="text-red-400">*</span>
+          </label>
+          <input
+            type="text"
+            value={department}
+            onChange={(e) => onDepartmentChange(e.target.value)}
+            placeholder="e.g. Marketing, Engineering, HR"
+            className="w-full px-4 py-3.5 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0D7377] focus:border-transparent transition"
+          />
+          <p className="text-xs text-gray-400 mt-1.5">Type your team name exactly as you know it.</p>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onContinue}
+        disabled={!canContinue}
+        className="w-full mt-8 py-4 rounded-xl text-white font-semibold text-sm tracking-wide transition-opacity hover:opacity-90 disabled:opacity-40"
+        style={{ backgroundColor: '#0D7377' }}
+      >
+        Continue
+      </button>
+    </div>
+  )
+}
+
+// ─── Step 5: Personal Email (enterprise) ─────────────────────────────────────
+
+interface StepPersonalEmailProps {
+  personalEmail: string
+  onPersonalEmailChange: (v: string) => void
+  onAdd: () => void
+  onSkip: () => void
+  loading: boolean
+}
+
+function StepPersonalEmail({ personalEmail, onPersonalEmailChange, onAdd, onSkip, loading }: StepPersonalEmailProps) {
+  const isValid = personalEmail.includes('@') && personalEmail.includes('.')
+
+  return (
+    <div className="px-5 pt-2 pb-10">
+      <h1 className="text-2xl font-bold text-gray-900 mb-1">Add a personal email (optional)</h1>
+      <p className="text-gray-500 text-sm mb-8">
+        Your work email is your ROVA login right now. If you ever change jobs, adding a personal email means your groups, badges, and history come with you — they won&apos;t be lost.
+      </p>
+
+      <div className="mb-8">
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">Personal email</label>
+        <input
+          type="email"
+          value={personalEmail}
+          onChange={(e) => onPersonalEmailChange(e.target.value)}
+          placeholder="your.name@gmail.com"
+          className="w-full px-4 py-3.5 rounded-xl border border-gray-200 text-gray-900 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0D7377] focus:border-transparent transition"
+        />
+      </div>
+
+      <button
+        type="button"
+        onClick={onAdd}
+        disabled={!isValid || loading}
+        className="w-full py-4 rounded-xl text-white font-semibold text-sm tracking-wide transition-opacity hover:opacity-90 disabled:opacity-40 mb-4 flex items-center justify-center gap-2"
+        style={{ backgroundColor: '#0D7377' }}
+      >
+        {loading ? 'Setting up your profile...' : 'Add personal email'}
+      </button>
+
+      <button
+        type="button"
+        onClick={onSkip}
+        disabled={loading}
+        className="w-full text-center text-sm text-gray-400 hover:text-gray-600 transition-colors py-2 disabled:opacity-40"
+      >
+        Skip for now
+      </button>
+    </div>
+  )
+}
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
@@ -426,6 +538,12 @@ export default function OnboardingPage() {
   const [suggestedGroups, setSuggestedGroups] = useState<SuggestedGroup[]>([])
   const [groupsLoading, setGroupsLoading] = useState(false)
 
+  const [detectedCompany, setDetectedCompany] = useState<CompanyRecord | null>(null)
+  const [workLocation, setWorkLocation] = useState('')
+  const [department, setDepartment] = useState('')
+  const [personalEmail, setPersonalEmail] = useState('')
+  const [companyLoading, setCompanyLoading] = useState(true)
+
   // Pre-fill full name from Supabase auth metadata
   useEffect(() => {
     const supabase = createClient()
@@ -436,6 +554,37 @@ export default function OnboardingPage() {
       }
     })
   }, [])
+
+  // Detect company from user's email domain
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user?.email) {
+        lookupCompanyByEmail(user.email).then((company) => {
+          setDetectedCompany(company)
+          setCompanyLoading(false)
+        })
+      } else {
+        setCompanyLoading(false)
+      }
+    })
+  }, [])
+
+  // ── Dynamic step mapping ────────────────────────────────────────────────────
+
+  const totalSteps = detectedCompany ? 5 : 3
+
+  const STEP_LABELS = detectedCompany
+    ? ['Your Profile', 'Work Details', 'Your Interests', 'Find Your Crew', 'Personal Email']
+    : ['Your Profile', 'Your Interests', 'Find Your Crew']
+
+  // Determine which content type the current step shows
+  function getStepContent(stepNum: number): string {
+    if (!detectedCompany) {
+      return ['profile', 'interests', 'groups'][stepNum - 1] ?? 'groups'
+    }
+    return ['profile', 'work', 'interests', 'groups', 'personal-email'][stepNum - 1] ?? 'personal-email'
+  }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -462,8 +611,8 @@ export default function OnboardingPage() {
   }
 
   async function goNext() {
-    // When moving from step 2 → step 3, fetch real groups matching interests
-    if (step === 2) {
+    // When leaving the interests step, fetch real groups matching interests for the groups step
+    if (getStepContent(step) === 'interests') {
       setGroupsLoading(true)
       const categories = formData.interests
         .map((i) => INTEREST_TO_CATEGORY[i])
@@ -559,16 +708,28 @@ export default function OnboardingPage() {
       }
 
       // Update profile row
+      const profileUpdate: Record<string, unknown> = {
+        full_name: formData.fullName,
+        bio: formData.bio || null,
+        location: formData.location || null,
+        interests: formData.interests,
+        avatar_url: avatarUrl,
+        onboarding_complete: true,
+      }
+
+      if (detectedCompany) {
+        profileUpdate.company_id = detectedCompany.id
+        profileUpdate.work_email = user.email
+        profileUpdate.work_location = workLocation
+        profileUpdate.department = department
+        if (personalEmail) {
+          profileUpdate.personal_email = personalEmail
+        }
+      }
+
       const { error: profileErr } = await supabase
         .from('profiles')
-        .update({
-          full_name: formData.fullName,
-          bio: formData.bio || null,
-          location: formData.location || null,
-          interests: formData.interests,
-          avatar_url: avatarUrl,
-          onboarding_complete: true,
-        })
+        .update(profileUpdate)
         .eq('id', user.id)
 
       if (profileErr) throw profileErr
@@ -582,7 +743,7 @@ export default function OnboardingPage() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  const progressPct = Math.round((step / 3) * 100)
+  const progressPct = Math.round((step / totalSteps) * 100)
 
   return (
     <div className="min-h-screen bg-white flex flex-col" style={{ maxWidth: 520, margin: '0 auto' }}>
@@ -630,7 +791,7 @@ export default function OnboardingPage() {
 
         {/* Step dots */}
         <div className="flex justify-center gap-2 mt-3">
-          {[1, 2, 3].map((s) => (
+          {Array.from({ length: totalSteps }, (_, i) => i + 1).map((s) => (
             <div
               key={s}
               className="rounded-full transition-all duration-300"
@@ -652,19 +813,49 @@ export default function OnboardingPage() {
           transform: visible ? 'translateY(0)' : 'translateY(12px)',
         }}
       >
-        {step === 1 && (
+        {detectedCompany && step === 1 && (
+          <div className="mx-5 mb-4 px-4 py-3 rounded-xl flex items-center gap-3" style={{ backgroundColor: '#0D73770A', border: '1px solid #0D737730' }}>
+            {detectedCompany.logo_url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={detectedCompany.logo_url} alt="" className="w-8 h-8 rounded-lg object-cover" />
+            )}
+            <p className="text-sm font-medium" style={{ color: '#0D7377' }}>
+              You&apos;re joining as part of {detectedCompany.name}.
+            </p>
+          </div>
+        )}
+        {getStepContent(step) === 'profile' && (
           <Step1Profile data={formData} onChange={updateForm} onContinue={goNext} />
         )}
-        {step === 2 && (
+        {getStepContent(step) === 'work' && detectedCompany && (
+          <StepWorkDetails
+            companyName={detectedCompany.name}
+            workLocation={workLocation}
+            department={department}
+            onWorkLocationChange={setWorkLocation}
+            onDepartmentChange={setDepartment}
+            onContinue={goNext}
+          />
+        )}
+        {getStepContent(step) === 'interests' && (
           <Step2Interests data={formData} onToggle={toggleInterest} onContinue={goNext} />
         )}
-        {step === 3 && (
+        {getStepContent(step) === 'groups' && (
           <Step3Groups
             groups={suggestedGroups}
             groupsLoading={groupsLoading}
             loading={saving}
-            onFinish={finish}
+            onFinish={detectedCompany ? goNext : finish}
+            onSkip={detectedCompany ? goNext : finish}
+          />
+        )}
+        {getStepContent(step) === 'personal-email' && (
+          <StepPersonalEmail
+            personalEmail={personalEmail}
+            onPersonalEmailChange={setPersonalEmail}
+            onAdd={finish}
             onSkip={finish}
+            loading={saving}
           />
         )}
       </main>

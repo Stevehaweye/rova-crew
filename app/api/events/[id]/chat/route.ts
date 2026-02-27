@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendPushToUser } from '@/lib/push-sender'
+import { awardSpiritPoints } from '@/lib/spirit-points'
 
 export async function POST(
   request: NextRequest,
@@ -101,6 +102,9 @@ export async function POST(
       console.error('[event-chat] insert error:', error)
       return NextResponse.json({ error: 'Failed to send message' }, { status: 500 })
     }
+
+    // Award spirit points for event chat post (fire-and-forget)
+    awardSpiritPoints('event_chat_post', user.id, event.group_id).catch(() => {})
 
     // Push notification: send to RSVPd users whose last_read_at is >30 min ago
     const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()

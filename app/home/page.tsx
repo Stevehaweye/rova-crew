@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { isPlatformAdmin } from '@/lib/platform-admin'
 import UserMenu from './user-menu'
 import PushPermissionBanner from '@/components/PushPermissionBanner'
 import PostEventCard, { type PostEventHighlight } from '@/components/feed/PostEventCard'
@@ -18,6 +19,7 @@ export const metadata: Metadata = {
 interface Profile {
   full_name: string
   avatar_url: string | null
+  company_id?: string | null
 }
 
 interface Group {
@@ -116,7 +118,19 @@ function CalendarIcon() {
 
 // ─── Top Navigation ───────────────────────────────────────────────────────────
 
-function TopNav({ profile, groupSlug }: { profile: Profile; groupSlug?: string | null }) {
+function TopNav({
+  profile,
+  groupSlug,
+  isAdmin,
+  companySlug,
+  companyName,
+}: {
+  profile: Profile
+  groupSlug?: string | null
+  isAdmin?: boolean
+  companySlug?: string | null
+  companyName?: string | null
+}) {
   const name = profile.full_name
   const abbr = initials(name)
 
@@ -134,7 +148,15 @@ function TopNav({ profile, groupSlug }: { profile: Profile; groupSlug?: string |
         </Link>
 
         {/* User identity */}
-        <UserMenu name={name} avatarUrl={profile.avatar_url} initials={abbr} groupSlug={groupSlug} />
+        <UserMenu
+          name={name}
+          avatarUrl={profile.avatar_url}
+          initials={abbr}
+          groupSlug={groupSlug}
+          isAdmin={isAdmin}
+          companySlug={companySlug}
+          companyName={companyName}
+        />
       </div>
     </nav>
   )
@@ -299,18 +321,33 @@ function GroupCard({ group, memberCount }: { group: Group; memberCount: number }
 
 // ─── Has Groups Content ───────────────────────────────────────────────────────
 
+interface CompanyGroup {
+  id: string
+  name: string
+  slug: string
+  logo_url: string | null
+  primary_colour: string
+  category: string
+  tagline: string | null
+  memberCount: number
+}
+
 function HasGroupsContent({
   profile,
   groups,
   memberCounts,
   upcomingEvents,
   postEventHighlights,
+  companyGroups,
+  companyName,
 }: {
   profile: Profile
   groups: Group[]
   memberCounts: Record<string, number>
   upcomingEvents: UpcomingEvent[]
   postEventHighlights: PostEventHighlight[]
+  companyGroups?: CompanyGroup[]
+  companyName?: string | null
 }) {
   const first = firstName(profile.full_name)
 
@@ -348,6 +385,33 @@ function HasGroupsContent({
               ))}
             </div>
           </section>
+
+          {/* Discover groups at [Company] */}
+          {companyGroups && companyGroups.length > 0 && companyName && (
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-base font-bold text-gray-900">
+                  Discover groups at {companyName}
+                </h2>
+                <Link
+                  href="/discover"
+                  className="text-sm font-semibold transition-opacity hover:opacity-75"
+                  style={{ color: '#0D7377' }}
+                >
+                  See all &rarr;
+                </Link>
+              </div>
+              <div className="space-y-3">
+                {companyGroups.slice(0, 3).map((cg) => (
+                  <GroupCard
+                    key={cg.id}
+                    group={cg}
+                    memberCount={cg.memberCount}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* Coming up for you */}
           {upcomingEvents.length > 0 && (
@@ -539,14 +603,16 @@ export default async function HomePage() {
 
   if (!user) redirect('/auth')
 
+  const svc = createServiceClient()
+
   // Parallel fetch: profile + group memberships
   const [profileResult, membershipsResult] = await Promise.all([
-    supabase
+    svc
       .from('profiles')
-      .select('full_name, avatar_url')
+      .select('full_name, avatar_url, company_id')
       .eq('id', user.id)
       .single(),
-    supabase
+    svc
       .from('group_members')
       .select(
         `role, status, joined_at,
@@ -560,6 +626,67 @@ export default async function HomePage() {
   const profile: Profile = profileResult.data ?? {
     full_name: user.email?.split('@')[0] ?? 'there',
     avatar_url: null,
+  }
+
+  // Check platform admin
+  const isAdmin = isPlatformAdmin(user.email)
+
+  // Company info for nav links + discovery section
+  let companySlug: string | null = null
+  let companyName: string | null = null
+  let companyGroups: CompanyGroup[] = []
+
+  if (profile.company_id) {
+    const { data: company } = await svc
+      .from('companies')
+      .select('slug, name')
+      .eq('id', profile.company_id)
+      .maybeSingle()
+
+    if (company) {
+      companySlug = company.slug
+      companyName = company.name
+
+      // Fetch unjoined company-scoped groups
+      const joinedGroupIds = (membershipsResult.data ?? [])
+        .map((m) => (m.groups as unknown as Group)?.id)
+        .filter(Boolean)
+
+      const { data: scopeRows } = await svc
+        .from('group_scope')
+        .select('group_id')
+        .eq('company_id', profile.company_id)
+
+      const companyGroupIds = (scopeRows ?? []).map((r) => r.group_id)
+      const unjoinedIds = companyGroupIds.filter((id) => !joinedGroupIds.includes(id))
+
+      if (unjoinedIds.length > 0) {
+        const { data: cGroups } = await svc
+          .from('groups')
+          .select('id, name, slug, logo_url, primary_colour, category, tagline')
+          .in('id', unjoinedIds)
+          .limit(5)
+
+        if (cGroups && cGroups.length > 0) {
+          // Get member counts
+          const { data: cCounts } = await svc
+            .from('group_members')
+            .select('group_id')
+            .in('group_id', cGroups.map((g) => g.id))
+            .eq('status', 'approved')
+
+          const cCountMap: Record<string, number> = {}
+          for (const r of cCounts ?? []) {
+            cCountMap[r.group_id] = (cCountMap[r.group_id] ?? 0) + 1
+          }
+
+          companyGroups = cGroups.map((g) => ({
+            ...g,
+            memberCount: cCountMap[g.id] ?? 0,
+          }))
+        }
+      }
+    }
   }
 
   const groups: Group[] = (membershipsResult.data ?? [])
@@ -630,8 +757,6 @@ export default async function HomePage() {
   let postEventHighlights: PostEventHighlight[] = []
 
   if (groups.length > 0) {
-    const svc = createServiceClient()
-
     const { data: pastEvents } = await svc
       .from('events')
       .select('id, title, ends_at, group_id, cover_url')
@@ -759,7 +884,13 @@ export default async function HomePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      <TopNav profile={profile} groupSlug={groups[0]?.slug ?? null} />
+      <TopNav
+        profile={profile}
+        groupSlug={groups[0]?.slug ?? null}
+        isAdmin={isAdmin}
+        companySlug={companySlug}
+        companyName={companyName}
+      />
 
       <main>
         <PushPermissionBanner />
@@ -770,6 +901,8 @@ export default async function HomePage() {
             memberCounts={memberCounts}
             upcomingEvents={upcomingEvents}
             postEventHighlights={postEventHighlights}
+            companyGroups={companyGroups}
+            companyName={companyName}
           />
         ) : (
           <EmptyState name={profile.full_name} />

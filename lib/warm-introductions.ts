@@ -36,13 +36,53 @@ export async function getWarmIntroductions(
 
   const newUserGroupIds = (newUserGroups ?? []).map(g => g.group_id)
 
-  let mutualConnections: WarmConnection[] = []
+  // Filter to only groups the new member can actually see (scope-aware)
+  // This prevents revealing the existence of hidden company groups
+  let visibleGroupIds = newUserGroupIds
   if (newUserGroupIds.length > 0) {
-    // Find group members who are also in the new user's other groups
+    const { data: userProfile } = await svc
+      .from('profiles')
+      .select('company_id, work_location, department')
+      .eq('id', newUserId)
+      .maybeSingle()
+
+    const { data: scopeRows } = await svc
+      .from('group_scope')
+      .select('group_id, scope_type, company_id, scope_location, scope_department')
+      .in('group_id', newUserGroupIds)
+
+    const scopeMap = new Map((scopeRows ?? []).map(s => [s.group_id, s]))
+
+    visibleGroupIds = newUserGroupIds.filter(gid => {
+      const scope = scopeMap.get(gid)
+      if (!scope || scope.scope_type === 'public') return true
+      if (!userProfile?.company_id || userProfile.company_id !== scope.company_id) return false
+      if (scope.scope_type === 'company') return true
+      if (scope.scope_type === 'location') {
+        return !!(userProfile.work_location && scope.scope_location &&
+          userProfile.work_location.toLowerCase().trim() === scope.scope_location.toLowerCase().trim())
+      }
+      if (scope.scope_type === 'department') {
+        return !!(userProfile.department && scope.scope_department &&
+          userProfile.department.toLowerCase().trim() === scope.scope_department.toLowerCase().trim())
+      }
+      if (scope.scope_type === 'loc_dept') {
+        return !!(userProfile.work_location && userProfile.department &&
+          scope.scope_location && scope.scope_department &&
+          userProfile.work_location.toLowerCase().trim() === scope.scope_location.toLowerCase().trim() &&
+          userProfile.department.toLowerCase().trim() === scope.scope_department.toLowerCase().trim())
+      }
+      return false
+    })
+  }
+
+  let mutualConnections: WarmConnection[] = []
+  if (visibleGroupIds.length > 0) {
+    // Find group members who are also in the new user's other visible groups
     const { data: sharedMembers } = await svc
       .from('group_members')
       .select('user_id, group_id, groups ( name )')
-      .in('group_id', newUserGroupIds)
+      .in('group_id', visibleGroupIds)
       .in('user_id', memberIds)
       .eq('status', 'approved')
 
