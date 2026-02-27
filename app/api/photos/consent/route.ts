@@ -77,7 +77,7 @@ export async function PUT(request: NextRequest) {
 
     if (upsertErr) {
       console.error('[photo-consent] upsert error:', upsertErr)
-      return NextResponse.json({ error: 'Failed to save preference' }, { status: 500 })
+      return NextResponse.json({ error: `Failed to save preference: ${upsertErr.message}` }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
