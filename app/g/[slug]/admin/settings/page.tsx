@@ -89,7 +89,7 @@ export default async function SettingsPage({
   const serviceClient = createServiceClient()
   const { data: groupFeeData } = await serviceClient
     .from('groups')
-    .select('membership_fee_enabled, membership_fee_pence, allow_dm, tier_theme, badge_announcements_enabled, watermark_photos, location, tagline, description, category, is_public, join_approval_required')
+    .select('membership_fee_enabled, membership_fee_pence, allow_dm, tier_theme, badge_announcements_enabled, watermark_photos, location, tagline, description, category, is_public, join_approval_required, hero_url, hero_focal_x, hero_focal_y')
     .eq('id', group.id)
     .single()
 
@@ -127,6 +127,11 @@ export default async function SettingsPage({
         category: groupFeeData?.category ?? '',
         isPublic: groupFeeData?.is_public ?? true,
         joinApprovalRequired: groupFeeData?.join_approval_required ?? false,
+      }}
+      heroImage={{
+        url: groupFeeData?.hero_url ?? null,
+        focalX: groupFeeData?.hero_focal_x ?? 50,
+        focalY: groupFeeData?.hero_focal_y ?? 50,
       }}
     />
   )

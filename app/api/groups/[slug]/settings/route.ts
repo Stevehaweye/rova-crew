@@ -73,6 +73,9 @@ export async function POST(
     if (Array.isArray(body.custom_tier_names)) updates.custom_tier_names = body.custom_tier_names
     if (typeof body.watermark_photos === 'boolean') updates.watermark_photos = body.watermark_photos
     if (typeof body.location === 'string') updates.location = body.location.trim() || null
+    if (typeof body.hero_url === 'string') updates.hero_url = body.hero_url || null
+    if (typeof body.hero_focal_x === 'number') updates.hero_focal_x = Math.max(0, Math.min(100, Math.round(body.hero_focal_x)))
+    if (typeof body.hero_focal_y === 'number') updates.hero_focal_y = Math.max(0, Math.min(100, Math.round(body.hero_focal_y)))
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'No valid fields provided' }, { status: 400 })

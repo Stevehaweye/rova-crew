@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   // Build query
   let query = svc
     .from('groups')
-    .select('id, name, slug, tagline, category, logo_url, hero_url, primary_colour, location')
+    .select('id, name, slug, tagline, category, logo_url, hero_url, hero_focal_x, hero_focal_y, primary_colour, location')
     .eq('is_public', true)
 
   // Full-text search if query provided
@@ -63,6 +63,8 @@ export async function GET(request: NextRequest) {
     category: g.category,
     logoUrl: g.logo_url,
     heroUrl: g.hero_url,
+    heroFocalX: g.hero_focal_x ?? 50,
+    heroFocalY: g.hero_focal_y ?? 50,
     primaryColour: g.primary_colour?.startsWith('#') ? g.primary_colour : `#${g.primary_colour}`,
     memberCount: memberCounts[g.id] ?? 0,
     location: g.location,

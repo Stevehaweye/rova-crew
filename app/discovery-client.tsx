@@ -14,6 +14,8 @@ interface GroupCard {
   category: string
   logoUrl: string | null
   heroUrl: string | null
+  heroFocalX: number
+  heroFocalY: number
   primaryColour: string
   memberCount: number
   nextEventDate: string | null
@@ -271,6 +273,7 @@ function GroupCardComponent({ group }: { group: GroupCard }) {
             src={group.heroUrl}
             alt=""
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+            style={{ objectPosition: `${group.heroFocalX}% ${group.heroFocalY}%` }}
           />
         ) : (
           <div className="w-full h-full" style={{ backgroundColor: group.primaryColour }}>
@@ -380,7 +383,7 @@ function TrendingSection({ groups }: { groups: GroupCard[] }) {
             <div className="h-28 relative overflow-hidden">
               {g.heroUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={g.heroUrl} alt="" className="w-full h-full object-cover" />
+                <img src={g.heroUrl} alt="" className="w-full h-full object-cover" style={{ objectPosition: `${g.heroFocalX}% ${g.heroFocalY}%` }} />
               ) : (
                 <div className="w-full h-full" style={{ backgroundColor: g.primaryColour }}>
                   <div

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { TIER_THEMES } from '@/lib/tier-themes'
@@ -52,11 +52,16 @@ interface Props {
     isPublic: boolean
     joinApprovalRequired: boolean
   }
+  heroImage: {
+    url: string | null
+    focalX: number
+    focalY: number
+  }
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function SettingsClient({ group, stripe, membershipFee, dmEnabled: initialDmEnabled, tierTheme: initialTierTheme, badgeAnnouncementsEnabled: initialBadgeAnnounce, watermarkPhotos: initialWatermark, location: initialLocation, groupProfile }: Props) {
+export default function SettingsClient({ group, stripe, membershipFee, dmEnabled: initialDmEnabled, tierTheme: initialTierTheme, badgeAnnouncementsEnabled: initialBadgeAnnounce, watermarkPhotos: initialWatermark, location: initialLocation, groupProfile, heroImage }: Props) {
   const searchParams = useSearchParams()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -95,6 +100,18 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
   // Location state
   const [locationVal, setLocationVal] = useState(initialLocation)
   const [locationSaving, setLocationSaving] = useState(false)
+
+  // Hero image state
+  const [heroUrl, setHeroUrl] = useState(heroImage.url)
+  const [heroPreview, setHeroPreview] = useState<string | null>(heroImage.url)
+  const [heroFile, setHeroFile] = useState<File | null>(null)
+  const [focalX, setFocalX] = useState(heroImage.focalX)
+  const [focalY, setFocalY] = useState(heroImage.focalY)
+  const [heroSaving, setHeroSaving] = useState(false)
+  const [heroUploading, setHeroUploading] = useState(false)
+  const [isDraggingFocal, setIsDraggingFocal] = useState(false)
+  const heroInputRef = useRef<HTMLInputElement>(null)
+  const focalImageRef = useRef<HTMLDivElement>(null)
 
   // Show toast on return from Stripe
   useEffect(() => {
@@ -296,6 +313,140 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
     setProfileSaving(false)
   }
 
+  // ── Hero image handlers ──────────────────────────────────────────
+  function handleHeroFile(file: File) {
+    if (!file.type.startsWith('image/')) return
+    if (file.size > 10 * 1024 * 1024) {
+      setToast('Image must be under 10MB')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      setHeroPreview(e.target?.result as string)
+      setHeroFile(file)
+      setFocalX(50)
+      setFocalY(50)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleFocalMove = useCallback((clientX: number, clientY: number) => {
+    if (!focalImageRef.current) return
+    const rect = focalImageRef.current.getBoundingClientRect()
+    const x = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100))
+    const y = Math.max(0, Math.min(100, ((clientY - rect.top) / rect.height) * 100))
+    setFocalX(Math.round(x))
+    setFocalY(Math.round(y))
+  }, [])
+
+  const handleFocalMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setIsDraggingFocal(true)
+    handleFocalMove(e.clientX, e.clientY)
+  }, [handleFocalMove])
+
+  useEffect(() => {
+    if (!isDraggingFocal) return
+    const onMove = (e: MouseEvent) => handleFocalMove(e.clientX, e.clientY)
+    const onUp = () => setIsDraggingFocal(false)
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [isDraggingFocal, handleFocalMove])
+
+  const handleFocalTouchStart = useCallback((e: React.TouchEvent) => {
+    setIsDraggingFocal(true)
+    const touch = e.touches[0]
+    handleFocalMove(touch.clientX, touch.clientY)
+  }, [handleFocalMove])
+
+  const handleFocalTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isDraggingFocal) return
+    e.preventDefault()
+    const touch = e.touches[0]
+    handleFocalMove(touch.clientX, touch.clientY)
+  }, [isDraggingFocal, handleFocalMove])
+
+  async function handleSaveHero() {
+    setHeroSaving(true)
+    try {
+      let uploadedUrl = heroUrl
+
+      if (heroFile) {
+        setHeroUploading(true)
+        const { createClient } = await import('@/lib/supabase/client')
+        const supabase = createClient()
+        const ext = heroFile.name.split('.').pop() ?? 'jpg'
+        const path = `${group.slug}/hero-${Date.now()}.${ext}`
+        const { data: upload, error: uploadErr } = await supabase.storage
+          .from('group-logos')
+          .upload(path, heroFile, { upsert: true })
+
+        if (uploadErr) {
+          setToast(`Upload failed: ${uploadErr.message}`)
+          setHeroSaving(false)
+          setHeroUploading(false)
+          return
+        }
+
+        uploadedUrl = supabase.storage
+          .from('group-logos')
+          .getPublicUrl(upload.path).data.publicUrl
+        setHeroUploading(false)
+      }
+
+      const res = await fetch(`/api/groups/${group.slug}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hero_url: uploadedUrl,
+          hero_focal_x: focalX,
+          hero_focal_y: focalY,
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        setToast(data.error || 'Failed to save')
+      } else {
+        setHeroUrl(uploadedUrl)
+        setHeroFile(null)
+        setToast('Cover image updated')
+      }
+    } catch {
+      setToast('Network error. Please try again.')
+    }
+    setHeroSaving(false)
+  }
+
+  async function handleRemoveHero() {
+    setHeroSaving(true)
+    try {
+      const res = await fetch(`/api/groups/${group.slug}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hero_url: '', hero_focal_x: 50, hero_focal_y: 50 }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setToast(data.error || 'Failed to remove')
+      } else {
+        setHeroUrl(null)
+        setHeroPreview(null)
+        setHeroFile(null)
+        setFocalX(50)
+        setFocalY(50)
+        setToast('Cover image removed')
+      }
+    } catch {
+      setToast('Network error. Please try again.')
+    }
+    setHeroSaving(false)
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -451,6 +602,154 @@ export default function SettingsClient({ group, stripe, membershipFee, dmEnabled
             >
               {profileSaving ? 'Saving...' : 'Save'}
             </button>
+          </div>
+        </section>
+
+        {/* ── Cover Image ─────────────────────────────────────────── */}
+        <section className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center">
+              <svg className="w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-900">Cover Image</p>
+              <p className="text-xs text-gray-500">Upload a banner image for your group page</p>
+            </div>
+          </div>
+
+          <div className="px-5 py-5 space-y-4">
+            <input
+              ref={heroInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) handleHeroFile(f)
+              }}
+            />
+
+            {heroPreview ? (
+              <>
+                {/* Focal point adjuster */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-2">
+                    Drag to set focal point
+                  </label>
+                  <div
+                    ref={focalImageRef}
+                    className="relative w-full overflow-hidden rounded-xl cursor-crosshair select-none border border-gray-200"
+                    style={{ aspectRatio: '16/9' }}
+                    onMouseDown={handleFocalMouseDown}
+                    onTouchStart={handleFocalTouchStart}
+                    onTouchMove={handleFocalTouchMove}
+                    onTouchEnd={() => setIsDraggingFocal(false)}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={heroPreview}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      draggable={false}
+                    />
+                    {/* Grid overlay */}
+                    <div
+                      className="absolute inset-0 pointer-events-none"
+                      style={{
+                        backgroundImage: 'linear-gradient(rgba(255,255,255,0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.15) 1px, transparent 1px)',
+                        backgroundSize: '33.33% 33.33%',
+                      }}
+                    />
+                    {/* Focal point indicator */}
+                    <div
+                      className="absolute pointer-events-none"
+                      style={{
+                        left: `${focalX}%`,
+                        top: `${focalY}%`,
+                        transform: 'translate(-50%, -50%)',
+                      }}
+                    >
+                      <div
+                        className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center"
+                        style={{ boxShadow: '0 0 0 1px rgba(0,0,0,0.3), 0 2px 8px rgba(0,0,0,0.3)' }}
+                      >
+                        <div className="w-2 h-2 rounded-full bg-white" style={{ boxShadow: '0 0 0 1px rgba(0,0,0,0.3)' }} />
+                      </div>
+                      <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-full w-px h-3 bg-white/60" />
+                      <div className="absolute left-1/2 bottom-0 -translate-x-1/2 translate-y-full w-px h-3 bg-white/60" />
+                      <div className="absolute top-1/2 left-0 -translate-y-1/2 -translate-x-full h-px w-3 bg-white/60" />
+                      <div className="absolute top-1/2 right-0 -translate-y-1/2 translate-x-full h-px w-3 bg-white/60" />
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1.5">Focal point: {focalX}%, {focalY}%</p>
+                </div>
+
+                {/* Live crop preview */}
+                <div>
+                  <label className="block text-xs font-semibold text-gray-500 mb-2">
+                    Preview (how it will look on the group page)
+                  </label>
+                  <div className="relative w-full overflow-hidden rounded-xl border border-gray-200" style={{ height: '120px' }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={heroPreview}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      style={{ objectPosition: `${focalX}% ${focalY}%` }}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                  </div>
+                </div>
+
+                {/* Change / Remove buttons */}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => heroInputRef.current?.click()}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold border-2 border-gray-200 text-gray-600 hover:border-gray-300 transition-colors"
+                  >
+                    Change image
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRemoveHero}
+                    disabled={heroSaving}
+                    className="px-4 py-2.5 rounded-xl text-sm font-semibold text-red-500 border-2 border-red-200 hover:border-red-300 transition-colors disabled:opacity-60"
+                  >
+                    Remove
+                  </button>
+                </div>
+
+                {/* Save button */}
+                <button
+                  onClick={handleSaveHero}
+                  disabled={heroSaving}
+                  className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                  style={{ backgroundColor: group.colour }}
+                >
+                  {heroUploading ? 'Uploading...' : heroSaving ? 'Saving...' : 'Save'}
+                </button>
+              </>
+            ) : (
+              <div
+                onClick={() => heroInputRef.current?.click()}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  const f = e.dataTransfer.files[0]
+                  if (f) handleHeroFile(f)
+                }}
+                className="border-2 border-dashed border-gray-200 rounded-xl py-10 flex flex-col items-center justify-center cursor-pointer hover:border-gray-300 hover:bg-gray-50/50 transition-all"
+              >
+                <svg className="w-10 h-10 text-gray-300 mb-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+                </svg>
+                <p className="text-sm font-medium text-gray-500">Upload a cover image</p>
+                <p className="text-xs text-gray-400 mt-1">PNG, JPG or WebP. Recommended 1200x600.</p>
+              </div>
+            )}
           </div>
         </section>
 

@@ -19,6 +19,8 @@ interface Group {
   category: string
   logo_url: string | null
   hero_url: string | null
+  hero_focal_x: number | null
+  hero_focal_y: number | null
   primary_colour: string
   is_public: boolean
   join_approval_required: boolean
@@ -164,6 +166,9 @@ function PrivateGroupView({ group, colour }: { group: Group; colour: string }) {
 // ─── Hero section ─────────────────────────────────────────────────────────────
 
 function Hero({ group, colour }: { group: Group; colour: string }) {
+  const focalX = group.hero_focal_x ?? 50
+  const focalY = group.hero_focal_y ?? 50
+
   return (
     <section className="relative h-72 sm:h-[400px] overflow-hidden">
 
@@ -175,6 +180,7 @@ function Hero({ group, colour }: { group: Group; colour: string }) {
             src={group.hero_url}
             alt=""
             className="absolute inset-0 w-full h-full object-cover"
+            style={{ objectPosition: `${focalX}% ${focalY}%` }}
             fetchPriority="high"
             width={1200}
             height={600}

@@ -38,6 +38,8 @@ interface GroupRow {
   category: string
   logo_url: string | null
   hero_url: string | null
+  hero_focal_x: number | null
+  hero_focal_y: number | null
   primary_colour: string
   location: string | null
 }
@@ -61,7 +63,7 @@ export default async function DiscoverPage() {
     await Promise.all([
       svc
         .from('groups')
-        .select('id, name, slug, tagline, category, logo_url, hero_url, primary_colour, location')
+        .select('id, name, slug, tagline, category, logo_url, hero_url, hero_focal_x, hero_focal_y, primary_colour, location')
         .eq('is_public', true)
         .order('created_at', { ascending: false })
         .limit(24),
@@ -141,6 +143,8 @@ export default async function DiscoverPage() {
       category: g.category,
       logoUrl: g.logo_url,
       heroUrl: g.hero_url,
+      heroFocalX: g.hero_focal_x ?? 50,
+      heroFocalY: g.hero_focal_y ?? 50,
       primaryColour: g.primary_colour.startsWith('#') ? g.primary_colour : `#${g.primary_colour}`,
       memberCount: memberCounts[g.id] ?? 0,
       nextEventDate: nextEvents[g.id] ?? null,
