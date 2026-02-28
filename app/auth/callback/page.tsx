@@ -23,42 +23,46 @@ function CallbackHandler() {
 
     const supabase = createClient()
 
-    // Once auth is confirmed, redirect via the server-side redirect endpoint.
-    // This avoids async Supabase queries in Safari iOS event callbacks which
-    // silently fail, and lets the server check onboarding status reliably.
-    function doRedirect() {
-      window.location.href = '/auth/redirect'
-    }
+    async function handleAuth() {
+      // 1. Try to extract tokens from the hash fragment (implicit flow)
+      const hash = window.location.hash
+      if (hash && hash.includes('access_token')) {
+        const params = new URLSearchParams(hash.substring(1))
+        const accessToken = params.get('access_token')
+        const refreshToken = params.get('refresh_token')
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (session?.user) {
-          subscription.unsubscribe()
-          clearTimeout(timeout)
-          doRedirect()
+        if (accessToken && refreshToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          })
+          if (!error) {
+            window.location.href = '/auth/redirect'
+            return
+          }
         }
       }
-    )
 
-    // Fallback: if session was already processed before listener was set up
-    supabase.auth.getSession().then(({ data: { session } }) => {
+      // 2. Fallback: check if session already exists (e.g. same-device flow)
+      const { data: { session } } = await supabase.auth.getSession()
       if (session?.user) {
-        subscription.unsubscribe()
-        clearTimeout(timeout)
-        doRedirect()
+        window.location.href = '/auth/redirect'
+        return
       }
-    })
 
-    // Hard fallback: redirect after 5 seconds regardless.
-    const timeout = setTimeout(() => {
-      subscription.unsubscribe()
-      doRedirect()
-    }, 5000)
+      // 3. Last resort: wait briefly and check again
+      await new Promise(r => setTimeout(r, 2000))
+      const { data: { session: retrySession } } = await supabase.auth.getSession()
+      if (retrySession?.user) {
+        window.location.href = '/auth/redirect'
+        return
+      }
 
-    return () => {
-      subscription.unsubscribe()
-      clearTimeout(timeout)
+      // Nothing worked — send back to auth
+      window.location.href = '/auth?error=timeout'
     }
+
+    handleAuth()
   }, [])
 
   return <Spinner />
