@@ -609,9 +609,62 @@ export default async function GroupPage({
   const isAdmin = isApprovedMember &&
     (membership?.role === 'super_admin' || membership?.role === 'co_admin')
 
-  // Private group guard
-  if (!group.is_public && !isApprovedMember) {
-    return <PrivateGroupView group={group} colour={hex(group.primary_colour)} />
+  // Private / enterprise scope guard
+  if (!isApprovedMember) {
+    if (!group.is_public) {
+      return <PrivateGroupView group={group} colour={hex(group.primary_colour)} />
+    }
+
+    // Check enterprise scope — if the group has a scope entry, the user must match
+    const svc = createServiceClient()
+    const { data: scopeRow } = await svc
+      .from('group_scope')
+      .select('scope_type, company_id, scope_location, scope_department')
+      .eq('group_id', group.id)
+      .maybeSingle()
+
+    if (scopeRow && scopeRow.scope_type !== 'public') {
+      // Enterprise-scoped group — user must be authenticated and match scope
+      if (!user) {
+        return <PrivateGroupView group={group} colour={hex(group.primary_colour)} />
+      }
+
+      const { data: profile } = await svc
+        .from('profiles')
+        .select('company_id, work_location, department')
+        .eq('id', user.id)
+        .single()
+
+      let canAccess = false
+      if (profile?.company_id && profile.company_id === scopeRow.company_id) {
+        const norm = (v: string | null) => (v ?? '').toLowerCase().trim()
+        switch (scopeRow.scope_type) {
+          case 'company':
+            canAccess = true
+            break
+          case 'location':
+            canAccess = !!profile.work_location && norm(profile.work_location) === norm(scopeRow.scope_location)
+            break
+          case 'department':
+            canAccess = !!profile.department && norm(profile.department) === norm(scopeRow.scope_department)
+            break
+          case 'loc_dept':
+            canAccess =
+              !!profile.work_location &&
+              !!profile.department &&
+              norm(profile.work_location) === norm(scopeRow.scope_location) &&
+              norm(profile.department) === norm(scopeRow.scope_department)
+            break
+          case 'invitation':
+            canAccess = false
+            break
+        }
+      }
+
+      if (!canAccess) {
+        return <PrivateGroupView group={group} colour={hex(group.primary_colour)} />
+      }
+    }
   }
 
   // Parallel fetch: member count + member profiles (up to 12) + upcoming events + organiser

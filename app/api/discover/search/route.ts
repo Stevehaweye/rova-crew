@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getVisibleGroupIds } from '@/lib/discovery'
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
@@ -9,38 +11,85 @@ export async function GET(request: NextRequest) {
 
   const svc = createServiceClient()
 
-  // Build query
+  // ── Determine which groups the user can see ───────────────────────────────
+  // Public groups are always visible. Enterprise-scoped groups are only visible
+  // to authenticated users whose profile matches the scope.
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  let scopedGroupIds: string[] | null = null
+
+  if (user) {
+    const { data: profile } = await svc
+      .from('profiles')
+      .select('id, company_id, work_location, department')
+      .eq('id', user.id)
+      .single()
+
+    if (profile?.company_id) {
+      scopedGroupIds = await getVisibleGroupIds({
+        id: profile.id,
+        company_id: profile.company_id,
+        work_location: profile.work_location,
+        department: profile.department,
+      })
+    }
+  }
+
+  // ── Fetch public groups ──────────────────────────────────────────────────
   let query = svc
     .from('groups')
     .select('id, name, slug, tagline, category, logo_url, hero_url, hero_focal_x, hero_focal_y, primary_colour, location')
     .eq('is_public', true)
 
-  // Full-text search if query provided
   if (q) {
     query = query.textSearch('search_vector', q, { type: 'plain', config: 'english' })
   }
 
-  // Category filter
   if (category) {
     query = query.eq('category', category)
   }
 
-  // Sort
-  if (sort === 'newest') {
-    query = query.order('created_at', { ascending: false })
-  } else {
-    query = query.order('created_at', { ascending: false })
+  query = query.order('created_at', { ascending: false })
+
+  const { data: publicGroups } = await query.limit(24)
+
+  // ── Fetch enterprise-scoped groups the user can see ───────────────────────
+  let enterpriseGroups: typeof publicGroups = []
+
+  if (scopedGroupIds && scopedGroupIds.length > 0) {
+    let entQuery = svc
+      .from('groups')
+      .select('id, name, slug, tagline, category, logo_url, hero_url, hero_focal_x, hero_focal_y, primary_colour, location')
+      .in('id', scopedGroupIds)
+
+    if (q) {
+      entQuery = entQuery.textSearch('search_vector', q, { type: 'plain', config: 'english' })
+    }
+
+    if (category) {
+      entQuery = entQuery.eq('category', category)
+    }
+
+    const { data } = await entQuery.limit(24)
+    enterpriseGroups = data ?? []
   }
 
-  const { data: groups, error } = await query.limit(24)
+  // ── Merge and deduplicate ────────────────────────────────────────────────
+  const seen = new Set<string>()
+  const allGroups = []
 
-  if (error) {
-    console.error('[discover/search] error:', error)
-    return NextResponse.json({ error: 'Search failed' }, { status: 500 })
+  for (const g of [...(publicGroups ?? []), ...enterpriseGroups]) {
+    if (!seen.has(g.id)) {
+      seen.add(g.id)
+      allGroups.push(g)
+    }
   }
 
   // Fetch member counts
-  const groupIds = (groups ?? []).map((g) => g.id)
+  const groupIds = allGroups.map((g) => g.id)
   const memberCounts: Record<string, number> = {}
 
   if (groupIds.length > 0) {
@@ -55,7 +104,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const results = (groups ?? []).map((g) => ({
+  const results = allGroups.map((g) => ({
     id: g.id,
     name: g.name,
     slug: g.slug,

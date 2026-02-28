@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { redirect } from 'next/navigation'
 import DiscoveryClient from './discovery-client'
 
@@ -53,7 +54,23 @@ export default async function RootPage() {
       .lt('starts_at', new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString()),
   ])
 
-  const groups: GroupRow[] = groupsResult.data ?? []
+  // Exclude enterprise-scoped groups from the public landing page
+  const allPublicGroups: GroupRow[] = groupsResult.data ?? []
+  let groups = allPublicGroups
+
+  if (allPublicGroups.length > 0) {
+    const svc = createServiceClient()
+    const { data: scopedRows } = await svc
+      .from('group_scope')
+      .select('group_id')
+      .in('group_id', allPublicGroups.map((g) => g.id))
+
+    if (scopedRows && scopedRows.length > 0) {
+      const scopedIds = new Set(scopedRows.map((r) => r.group_id))
+      groups = allPublicGroups.filter((g) => !scopedIds.has(g.id))
+    }
+  }
+
   const groupIds = groups.map((g) => g.id)
 
   // Fetch member counts + next event date for each group
