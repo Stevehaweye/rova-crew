@@ -23,15 +23,19 @@ function CallbackHandler() {
 
     const supabase = createClient()
 
-    // Detect auth and redirect immediately — NO async work inside the callback.
-    // Safari iOS silently swallows errors after await in event callbacks,
-    // which caused the page to freeze on "Signing you in..."
+    // Once auth is confirmed, redirect via the server-side redirect endpoint.
+    // This avoids async Supabase queries in Safari iOS event callbacks which
+    // silently fail, and lets the server check onboarding status reliably.
+    function doRedirect() {
+      window.location.href = '/auth/redirect'
+    }
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (session?.user) {
           subscription.unsubscribe()
           clearTimeout(timeout)
-          window.location.href = '/home'
+          doRedirect()
         }
       }
     )
@@ -41,16 +45,14 @@ function CallbackHandler() {
       if (session?.user) {
         subscription.unsubscribe()
         clearTimeout(timeout)
-        window.location.href = '/home'
+        doRedirect()
       }
     })
 
     // Hard fallback: redirect after 5 seconds regardless.
-    // If auth succeeded, /home will show the dashboard.
-    // If not, /home redirects to /auth.
     const timeout = setTimeout(() => {
       subscription.unsubscribe()
-      window.location.href = '/home'
+      doRedirect()
     }, 5000)
 
     return () => {
