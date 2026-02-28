@@ -65,6 +65,7 @@ function PaymentsPageInner() {
   const [account, setAccount] = useState<StripeAccountData | null>(null)
   const [loading, setLoading] = useState(true)
   const [connecting, setConnecting] = useState(false)
+  const [openingDashboard, setOpeningDashboard] = useState(false)
   const [toast, setToast] = useState('')
 
   useEffect(() => {
@@ -114,6 +115,22 @@ function PaymentsPageInner() {
       setToast('Network error. Please try again.')
     }
     setConnecting(false)
+  }
+
+  async function handleOpenDashboard() {
+    setOpeningDashboard(true)
+    try {
+      const res = await fetch('/api/stripe/dashboard-link', { method: 'POST' })
+      const data = await res.json()
+      if (data.url) {
+        window.open(data.url, '_blank')
+      } else {
+        setToast(data.error || 'Could not open dashboard.')
+      }
+    } catch {
+      setToast('Network error. Please try again.')
+    }
+    setOpeningDashboard(false)
   }
 
   const maskedAccountId = account?.stripe_account_id
@@ -198,20 +215,23 @@ function PaymentsPageInner() {
               </div>
 
               <div className="border-t border-gray-100 pt-4">
-                <a
-                  href="https://dashboard.stripe.com/express"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-sm font-semibold transition-colors hover:opacity-80"
+                <button
+                  onClick={handleOpenDashboard}
+                  disabled={openingDashboard}
+                  className="flex items-center gap-2 text-sm font-semibold transition-colors hover:opacity-80 disabled:opacity-60"
                   style={{ color: '#0D7377' }}
                 >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
-                  </svg>
+                  {openingDashboard ? (
+                    <Spinner />
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                    </svg>
+                  )}
                   Manage payouts and view transaction history
-                </a>
+                </button>
                 <p className="text-xs text-gray-400 mt-1.5">
-                  This opens your Stripe Express dashboard where you can set your payout schedule and see payment history.
+                  Opens your Stripe Express dashboard to set your payout schedule and see payment history.
                 </p>
               </div>
             </div>
