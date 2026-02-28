@@ -245,7 +245,7 @@ export default async function AdminEventsPage({
         ) : (
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             {/* Table header */}
-            <div className="hidden sm:grid grid-cols-[1fr_100px_80px_100px] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+            <div className="hidden sm:grid grid-cols-[1fr_100px_60px_auto] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
               <span>Event</span>
               <span>Date</span>
               <span>RSVPs</span>
@@ -263,7 +263,7 @@ export default async function AdminEventsPage({
               return (
                 <div
                   key={ev.id}
-                  className="sm:grid sm:grid-cols-[1fr_100px_80px_100px] gap-4 px-5 py-4 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors"
+                  className="sm:grid sm:grid-cols-[1fr_100px_60px_auto] gap-4 px-5 py-4 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors"
                 >
                   {/* Event info */}
                   <div className="flex items-center gap-3 min-w-0">
@@ -315,16 +315,16 @@ export default async function AdminEventsPage({
                     </div>
                   </div>
 
-                  {/* Date */}
-                  <div className="flex items-center">
+                  {/* Date — hidden on mobile, shown in desktop grid */}
+                  <div className="hidden sm:flex items-center">
                     <div className="text-sm text-gray-600">
                       <p className="font-medium">{dateStr}</p>
                       <p className="text-xs text-gray-400">{timeStr}</p>
                     </div>
                   </div>
 
-                  {/* RSVPs */}
-                  <div className="flex items-center">
+                  {/* RSVPs — hidden on mobile, shown in desktop grid */}
+                  <div className="hidden sm:flex items-center">
                     <p className="text-sm font-bold text-gray-900">
                       {count}
                       {ev.max_capacity && (
@@ -333,25 +333,32 @@ export default async function AdminEventsPage({
                     </p>
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-2">
+                  {/* Desktop actions: icon buttons + prominent Check In / Report */}
+                  <div className="hidden sm:flex items-center gap-1.5">
                     <Link
                       href={`/events/${ev.id}`}
-                      className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                      className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+                      title="View event"
                     >
-                      View
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                      </svg>
                     </Link>
                     {!isPast && (
                       <>
                         <Link
                           href={`/g/${group.slug}/admin/events/${ev.id}/edit`}
-                          className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                          className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+                          title="Edit event"
                         >
-                          Edit
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                          </svg>
                         </Link>
                         <Link
                           href={`/g/${group.slug}/admin/events/${ev.id}/checkin`}
-                          className="text-xs font-semibold px-2.5 py-1.5 rounded-lg text-white transition-opacity hover:opacity-90"
+                          className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white transition-opacity hover:opacity-90"
                           style={{ backgroundColor: colour }}
                         >
                           Check In
@@ -361,7 +368,52 @@ export default async function AdminEventsPage({
                     {isPast && (
                       <Link
                         href={`/g/${group.slug}/admin/events/${ev.id}/report`}
-                        className="text-xs font-semibold px-2.5 py-1.5 rounded-lg text-white transition-opacity hover:opacity-90"
+                        className="text-xs font-semibold px-3 py-1.5 rounded-lg text-white transition-opacity hover:opacity-90"
+                        style={{ backgroundColor: colour }}
+                      >
+                        Report
+                      </Link>
+                    )}
+                  </div>
+
+                  {/* Mobile actions: card layout with date/RSVPs + full-width buttons */}
+                  <div className="sm:hidden mt-3 pt-3 border-t border-gray-100">
+                    <div className="flex items-center gap-3 text-xs text-gray-500 mb-3">
+                      <span>{dateStr} · {timeStr}</span>
+                      <span className="font-bold text-gray-900">
+                        {count} RSVP{count !== 1 ? 's' : ''}
+                        {ev.max_capacity && <span className="text-gray-400 font-normal">/{ev.max_capacity}</span>}
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Link
+                        href={`/events/${ev.id}`}
+                        className="flex-1 text-center text-xs font-semibold px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                      >
+                        View
+                      </Link>
+                      {!isPast && (
+                        <Link
+                          href={`/g/${group.slug}/admin/events/${ev.id}/edit`}
+                          className="flex-1 text-center text-xs font-semibold px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                        >
+                          Edit
+                        </Link>
+                      )}
+                    </div>
+                    {!isPast && (
+                      <Link
+                        href={`/g/${group.slug}/admin/events/${ev.id}/checkin`}
+                        className="block w-full text-center text-sm font-bold px-4 py-2.5 rounded-xl text-white transition-opacity hover:opacity-90 mt-2"
+                        style={{ backgroundColor: colour }}
+                      >
+                        Check In
+                      </Link>
+                    )}
+                    {isPast && (
+                      <Link
+                        href={`/g/${group.slug}/admin/events/${ev.id}/report`}
+                        className="block w-full text-center text-sm font-bold px-4 py-2.5 rounded-xl text-white transition-opacity hover:opacity-90 mt-2"
                         style={{ backgroundColor: colour }}
                       >
                         Report
