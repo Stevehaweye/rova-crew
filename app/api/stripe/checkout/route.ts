@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getStripeServer } from '@/lib/stripe'
+import { calculatePlatformFeePence } from '@/lib/payment-fees'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
@@ -94,7 +95,8 @@ export async function POST(request: NextRequest) {
 
   // ── Calculate platform fee (5%, minimum 30p) ──────────────────────────────
   const amountPence = event.price_pence
-  const platformFeePence = Math.max(Math.round(amountPence * 0.05), 30)
+  const platformFeePence = calculatePlatformFeePence(amountPence)
+  const connectedAccountId = stripeAccount.stripe_account_id
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
   const group = event.groups as unknown as { name: string }
@@ -102,40 +104,41 @@ export async function POST(request: NextRequest) {
   try {
     const stripe = getStripeServer()
 
-    const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
-      line_items: [
-        {
-          price_data: {
-            currency: 'gbp',
-            unit_amount: amountPence,
-            product_data: {
-              name: event.title,
-              description: `Event ticket — ${group.name}`,
+    // Direct charge on connected account — organiser bears all fees
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: 'payment',
+        line_items: [
+          {
+            price_data: {
+              currency: 'gbp',
+              unit_amount: amountPence,
+              product_data: {
+                name: event.title,
+                description: `Event ticket — ${group.name}`,
+              },
             },
+            quantity: 1,
           },
-          quantity: 1,
+        ],
+        payment_intent_data: {
+          application_fee_amount: platformFeePence,
         },
-      ],
-      payment_intent_data: {
-        application_fee_amount: platformFeePence,
-        transfer_data: {
-          destination: stripeAccount.stripe_account_id,
+        customer_email: customerEmail,
+        metadata: {
+          event_id,
+          user_id: verifiedUserId ?? '',
+          is_guest: verifiedUserId ? 'false' : 'true',
+          guest_email: guest_email ?? '',
+          guest_name: guest_first_name && guest_last_name
+            ? `${guest_first_name} ${guest_last_name}`
+            : '',
         },
+        success_url: `${appUrl}/events/${event_id}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${appUrl}/events/${event_id}`,
       },
-      customer_email: customerEmail,
-      metadata: {
-        event_id,
-        user_id: verifiedUserId ?? '',
-        is_guest: verifiedUserId ? 'false' : 'true',
-        guest_email: guest_email ?? '',
-        guest_name: guest_first_name && guest_last_name
-          ? `${guest_first_name} ${guest_last_name}`
-          : '',
-      },
-      success_url: `${appUrl}/events/${event_id}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${appUrl}/events/${event_id}`,
-    })
+      { stripeAccount: connectedAccountId }
+    )
 
     // ── Create pending payment record ─────────────────────────────────────
     await serviceClient.from('payments').insert({
@@ -144,6 +147,7 @@ export async function POST(request: NextRequest) {
       user_id: verifiedUserId,
       guest_email: guest_email ?? null,
       stripe_checkout_session_id: session.id,
+      stripe_connected_account_id: connectedAccountId,
       amount_pence: amountPence,
       platform_fee_pence: platformFeePence,
       currency: 'gbp',

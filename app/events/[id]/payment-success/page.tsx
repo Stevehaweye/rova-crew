@@ -23,9 +23,20 @@ export default async function PaymentSuccessPage({
 
   // ── Verify the Stripe session ───────────────────────────────────────────
   const stripe = getStripeServer()
+
+  // Look up connected account for direct-charge sessions
+  const { data: paymentRecord } = await serviceClient
+    .from('payments')
+    .select('stripe_connected_account_id')
+    .eq('stripe_checkout_session_id', sessionId)
+    .maybeSingle()
+
   let session
   try {
-    session = await stripe.checkout.sessions.retrieve(sessionId)
+    const opts = paymentRecord?.stripe_connected_account_id
+      ? { stripeAccount: paymentRecord.stripe_connected_account_id }
+      : undefined
+    session = await stripe.checkout.sessions.retrieve(sessionId, undefined, opts)
   } catch {
     redirect(`/events/${eventId}`)
   }
@@ -115,7 +126,7 @@ export default async function PaymentSuccessPage({
     ? group.primary_colour
     : `#${group.primary_colour}`
 
-  const amountPence = session.amount_total ?? event.price_pence ?? 0
+  const amountPence = event.price_pence ?? 0
 
   return (
     <PaymentSuccessClient

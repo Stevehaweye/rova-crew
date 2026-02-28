@@ -977,7 +977,28 @@ export default function SettingsClient({ group, payments, membershipFee, dmEnabl
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 font-medium">per month</span>
                   </div>
-                  <p className="text-xs text-gray-400 mt-1.5">Minimum £1.00. ROVA Crew takes a 5% platform fee.</p>
+                  {/* Live net estimate */}
+                  {(() => {
+                    const gross = parseFloat(feePounds)
+                    if (isNaN(gross) || gross < 1) return null
+                    const grossPence = Math.round(gross * 100)
+                    const stripeFee = Math.round(grossPence * 0.014) + 20
+                    const platformFee = Math.max(Math.round(grossPence * 0.05), 30)
+                    const netPence = grossPence - stripeFee - platformFee
+                    if (netPence <= 0) return null
+                    return (
+                      <div className="bg-teal-50/70 rounded-lg border border-teal-100 px-3 py-2 mt-2 flex items-center justify-between">
+                        <span className="text-xs text-teal-700">You&apos;ll receive approx.</span>
+                        <span className="text-sm font-bold text-teal-900">
+                          &pound;{(netPence / 100).toFixed(2)}/month
+                        </span>
+                      </div>
+                    )
+                  })()}
+                  <p className="text-xs text-gray-400 mt-1.5 leading-relaxed">
+                    Minimum &pound;1.00. Stripe processing fees and ROVA&apos;s 5% platform fee
+                    are deducted from each payment. You receive the net amount.
+                  </p>
                 </div>
               )}
 

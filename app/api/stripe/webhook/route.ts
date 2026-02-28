@@ -17,17 +17,28 @@ export async function POST(request: NextRequest) {
   const stripe = getStripeServer()
   let event: Stripe.Event
 
+  // Try platform webhook secret first, then Connect webhook secret
   try {
     event = stripe.webhooks.constructEvent(
       body,
       signature,
       process.env.STRIPE_WEBHOOK_SECRET!
     )
-  } catch (err) {
-    console.error('[stripe-webhook] Signature verification failed:', err)
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
+  } catch {
+    try {
+      event = stripe.webhooks.constructEvent(
+        body,
+        signature,
+        process.env.STRIPE_CONNECT_WEBHOOK_SECRET!
+      )
+    } catch (err) {
+      console.error('[stripe-webhook] Signature verification failed:', err)
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 400 })
+    }
   }
 
+  // For Connect events, this identifies the connected account
+  const connectedAccountId = (event as unknown as { account?: string }).account ?? null
 
   const supabase = createServiceClient()
 
@@ -51,9 +62,14 @@ export async function POST(request: NextRequest) {
     const paymentIntentId = typeof session.payment_intent === 'string' ? session.payment_intent : null
     if (paymentIntentId) {
       try {
-        const pi = await stripe.paymentIntents.retrieve(paymentIntentId, {
-          expand: ['latest_charge'],
-        })
+        const retrieveOpts = connectedAccountId
+          ? { stripeAccount: connectedAccountId }
+          : undefined
+        const pi = await stripe.paymentIntents.retrieve(
+          paymentIntentId,
+          { expand: ['latest_charge'] },
+          retrieveOpts
+        )
         stripePaymentId = pi.id
         const charge = pi.latest_charge as Stripe.Charge | null
         stripeReceiptUrl = charge?.receipt_url ?? null
@@ -113,7 +129,7 @@ export async function POST(request: NextRequest) {
 
         const startDate = new Date(eventData.starts_at)
         const endDate = new Date(eventData.ends_at)
-        const paidPence = (session.amount_total ?? eventData.price_pence) as number | null
+        const paidPence = eventData.price_pence as number | null
         const signUpUrl = `${appUrl}/auth?next=/g/${group.slug}&email=${encodeURIComponent(guestEmail)}`
 
         const guestResult = await sendRsvpConfirmationEmail(guestEmail, {
@@ -184,7 +200,7 @@ export async function POST(request: NextRequest) {
 
         const startDate = new Date(eventData.starts_at)
         const endDate = new Date(eventData.ends_at)
-        const paidPence = (session.amount_total ?? eventData.price_pence) as number | null
+        const paidPence = eventData.price_pence as number | null
 
         const memberResult = await sendRsvpConfirmationEmail(memberEmail, {
           recipientName: profile?.full_name ?? 'there',

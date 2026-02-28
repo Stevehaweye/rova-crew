@@ -741,23 +741,6 @@ export default function EventForm({
         if (!createRes.ok) throw new Error(createData.error || 'Failed to create event')
         resultEventId = createData.eventId
 
-        // Create Stripe Product + Price for fixed-price events
-        if (form.paymentType === 'fixed' && group.hasStripeAccount) {
-          try {
-            await fetch('/api/stripe/create-product', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                eventId: resultEventId,
-                title: form.title.trim(),
-                priceAmount: parseFloat(form.ticketPrice),
-                groupName: group.name,
-              }),
-            })
-          } catch (err) {
-            console.error('[event-form] Stripe product creation error:', err)
-          }
-        }
       }
 
       router.push(`/g/${group.slug}/admin`)
@@ -954,8 +937,28 @@ export default function EventForm({
                     </div>
                     <FieldError msg={errors.ticketPrice} />
                   </div>
-                  <p className="text-xs text-amber-700">
-                    Attendees will pay via Stripe Checkout when they RSVP.
+                  {/* Live net estimate */}
+                  {(() => {
+                    const gross = parseFloat(form.ticketPrice)
+                    if (isNaN(gross) || gross < 1) return null
+                    const grossPence = Math.round(gross * 100)
+                    const stripeFee = Math.round(grossPence * 0.014) + 20
+                    const platformFee = Math.max(Math.round(grossPence * 0.05), 30)
+                    const netPence = grossPence - stripeFee - platformFee
+                    if (netPence <= 0) return null
+                    return (
+                      <div className="bg-white/70 rounded-lg border border-amber-100 px-4 py-3 flex items-center justify-between">
+                        <span className="text-sm text-amber-800">You&apos;ll receive approx.</span>
+                        <span className="text-lg font-bold text-amber-900">
+                          &pound;{(netPence / 100).toFixed(2)}
+                        </span>
+                      </div>
+                    )
+                  })()}
+
+                  <p className="text-xs text-amber-700 leading-relaxed">
+                    Please note: Stripe processing fees and ROVA&apos;s 5% platform fee
+                    are deducted at payment. You will receive the net amount.
                   </p>
                 </div>
               )}
