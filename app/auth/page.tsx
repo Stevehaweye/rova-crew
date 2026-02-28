@@ -176,7 +176,10 @@ function AuthPageInner() {
     setErrorMsg('')
 
     const supabase = createClient()
-    const redirectTo = `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`
+    const nextPath = searchParams.get('next')
+    const redirectTo = nextPath
+      ? `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback?next=${encodeURIComponent(nextPath)}`
+      : `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
