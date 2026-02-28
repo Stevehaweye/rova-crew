@@ -1,7 +1,6 @@
 'use client'
 
 import { Suspense, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 function Spinner() {
@@ -16,7 +15,6 @@ function Spinner() {
 }
 
 function CallbackHandler() {
-  const router = useRouter()
   const handled = useRef(false)
 
   useEffect(() => {
@@ -32,10 +30,12 @@ function CallbackHandler() {
         .eq('id', userId)
         .single()
 
+      // Use window.location for reliable redirect on Safari iOS
+      // (Next.js router.replace doesn't work in async auth callbacks on Safari)
       if (!profile?.onboarding_complete) {
-        router.replace('/onboarding')
+        window.location.replace('/onboarding')
       } else {
-        router.replace('/home')
+        window.location.replace('/home')
       }
     }
 
@@ -44,7 +44,9 @@ function CallbackHandler() {
     // This works cross-device because the tokens are self-contained.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
+        // Listen for both SIGNED_IN and INITIAL_SESSION — different Supabase
+        // versions fire different events when processing tokens from the hash.
+        if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
           subscription.unsubscribe()
           clearTimeout(timeout)
           await redirectUser(session.user.id)
@@ -67,14 +69,14 @@ function CallbackHandler() {
     // Timeout — if no session after 8 seconds, redirect to auth with error
     const timeout = setTimeout(() => {
       subscription.unsubscribe()
-      router.replace('/auth?error=timeout')
+      window.location.replace('/auth?error=timeout')
     }, 8000)
 
     return () => {
       subscription.unsubscribe()
       clearTimeout(timeout)
     }
-  }, [router])
+  }, [])
 
   return <Spinner />
 }
