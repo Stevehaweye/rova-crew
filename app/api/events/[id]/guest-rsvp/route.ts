@@ -3,6 +3,7 @@ import QRCode from 'qrcode'
 import { format } from 'date-fns'
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendRsvpConfirmationEmail } from '@/lib/email'
+import { canAccessGroup } from '@/lib/discovery'
 
 // ─── Validation ──────────────────────────────────────────────────────────────
 
@@ -56,6 +57,15 @@ export async function POST(
 
     if (eventErr || !event) {
       return NextResponse.json({ success: false, error: 'Event not found.' }, { status: 404 })
+    }
+
+    // Enterprise scope check — guests can never satisfy enterprise scope
+    const hasPublicAccess = await canAccessGroup(event.group_id, null)
+    if (!hasPublicAccess) {
+      return NextResponse.json(
+        { success: false, error: 'This event is restricted to specific company members.' },
+        { status: 403 }
+      )
     }
 
     if (event.allow_guest_rsvp === false) {

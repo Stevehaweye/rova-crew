@@ -2,6 +2,7 @@ import { Metadata } from 'next'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { filterPublicGroupIds } from '@/lib/discovery'
 import DiscoveryClient from '../discovery-client'
 
 // ─── SEO Metadata ────────────────────────────────────────────────────────────
@@ -138,13 +139,20 @@ export default async function DiscoverPage() {
       // Upcoming public events for JSON-LD
       svc
         .from('events')
-        .select('id, title, starts_at, ends_at, location, groups!inner ( is_public )')
+        .select('id, title, starts_at, ends_at, location, group_id, groups!inner ( is_public )')
         .gte('starts_at', now)
         .order('starts_at', { ascending: true })
         .limit(10),
     ])
 
-  const groups: GroupRow[] = groupsResult.data ?? []
+  // Filter out enterprise-scoped groups from public listing
+  const allGroups: GroupRow[] = groupsResult.data ?? []
+  const allGroupIds = allGroups.map((g) => g.id)
+  const eventGroupIds = (upcomingEventsResult.data ?? [])
+    .map((e: { group_id?: string }) => e.group_id)
+    .filter(Boolean) as string[]
+  const publicGroupIdSet = await filterPublicGroupIds([...new Set([...allGroupIds, ...eventGroupIds])])
+  const groups = allGroups.filter((g) => publicGroupIdSet.has(g.id))
   const groupIds = groups.map((g) => g.id)
 
   const memberCounts: Record<string, number> = {}
@@ -276,7 +284,12 @@ export default async function DiscoverPage() {
   // ── JSON-LD ────────────────────────────────────────────────────────────────
 
   const upcomingEvents = (upcomingEventsResult.data ?? []).filter(
-    (e) => (e.groups as unknown as { is_public: boolean })?.is_public
+    (e) => {
+      const g = e.groups as unknown as { is_public: boolean }
+      if (!g?.is_public) return false
+      // Exclude events from enterprise-scoped groups
+      return publicGroupIdSet.has((e as unknown as { group_id: string }).group_id)
+    }
   )
 
   const jsonLd = {

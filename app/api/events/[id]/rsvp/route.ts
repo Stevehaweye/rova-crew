@@ -7,6 +7,7 @@ import { sendRsvpConfirmationEmail, sendWaitlistEmail } from '@/lib/email'
 import { sendPushToUser } from '@/lib/push-sender'
 import { checkRsvpMilestone } from '@/lib/rsvp-milestones'
 import { awardSpiritPoints } from '@/lib/spirit-points'
+import { canAccessGroup } from '@/lib/discovery'
 
 export async function POST(
   request: NextRequest,
@@ -41,6 +42,16 @@ export async function POST(
       .select('max_capacity, plus_ones_allowed, max_plus_ones_per_member, plus_ones_count_toward_capacity, group_id')
       .eq('id', eventId)
       .single()
+
+    if (!evtConfig) {
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 })
+    }
+
+    // Enterprise scope check
+    const hasAccess = await canAccessGroup(evtConfig.group_id, user.id)
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'You do not have access to this event.' }, { status: 403 })
+    }
 
     const plusOnesAllowed = evtConfig?.plus_ones_allowed ?? true
     const maxPerMember = evtConfig?.max_plus_ones_per_member ?? 3

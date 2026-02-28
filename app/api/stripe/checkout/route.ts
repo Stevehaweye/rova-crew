@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getStripeServer } from '@/lib/stripe'
 import { calculatePlatformFeePence } from '@/lib/payment-fees'
+import { canAccessGroup } from '@/lib/discovery'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
@@ -49,6 +50,12 @@ export async function POST(request: NextRequest) {
 
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 })
+  }
+
+  // Enterprise scope check
+  const hasAccess = await canAccessGroup(event.group_id, verifiedUserId)
+  if (!hasAccess) {
+    return NextResponse.json({ error: 'You do not have access to this event.' }, { status: 403 })
   }
 
   if (event.payment_type !== 'fixed' || !event.price_pence) {

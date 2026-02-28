@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { generateEventSummary } from '@/lib/post-event-summary'
 import { getConsentRestrictedMembers } from '@/lib/photo-consent'
+import { canAccessGroup } from '@/lib/discovery'
 
 export async function GET(
   request: NextRequest,
@@ -21,6 +22,22 @@ export async function GET(
     }
 
     const svc = createServiceClient()
+
+    // Enterprise scope check
+    const { data: eventMeta } = await svc
+      .from('events')
+      .select('group_id')
+      .eq('id', eventId)
+      .maybeSingle()
+
+    if (!eventMeta) {
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 })
+    }
+
+    const hasAccess = await canAccessGroup(eventMeta.group_id, user.id)
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'You do not have access to this event.' }, { status: 403 })
+    }
 
     // Check if card already exists in storage
     const storagePath = `${eventId}.png`

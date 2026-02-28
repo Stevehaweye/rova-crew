@@ -4,6 +4,7 @@ import QRCode from 'qrcode'
 import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { canAccessGroup } from '@/lib/discovery'
 
 // ─── Format dimensions ──────────────────────────────────────────────────────
 
@@ -53,6 +54,12 @@ export async function GET(
 
     if (!event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
+    }
+
+    // Enterprise scope check
+    const hasAccess = await canAccessGroup(event.group_id, user.id)
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'You do not have access to this event.' }, { status: 403 })
     }
 
     const group = event.groups as unknown as {
