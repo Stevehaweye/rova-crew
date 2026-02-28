@@ -605,6 +605,15 @@ export default async function HomePage() {
 
   const svc = createServiceClient()
 
+  // Onboarding gate — redirect if profile isn't set up yet
+  const { data: onboardingCheck } = await svc
+    .from('profiles')
+    .select('onboarding_complete')
+    .eq('id', user.id)
+    .single()
+
+  if (!onboardingCheck?.onboarding_complete) redirect('/onboarding')
+
   // Parallel fetch: profile + group memberships
   const [profileResult, membershipsResult] = await Promise.all([
     svc

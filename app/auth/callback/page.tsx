@@ -23,54 +23,35 @@ function CallbackHandler() {
 
     const supabase = createClient()
 
-    async function redirectUser(userId: string) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('onboarding_complete')
-        .eq('id', userId)
-        .single()
-
-      // Use window.location for reliable redirect on Safari iOS
-      // (Next.js router.replace doesn't work in async auth callbacks on Safari)
-      if (!profile?.onboarding_complete) {
-        window.location.replace('/onboarding')
-      } else {
-        window.location.replace('/home')
-      }
-    }
-
-    // With implicit flow, Supabase redirects with tokens in the hash fragment.
-    // The Supabase client automatically picks these up and fires onAuthStateChange.
-    // This works cross-device because the tokens are self-contained.
+    // Detect auth and redirect immediately — NO async work inside the callback.
+    // Safari iOS silently swallows errors after await in event callbacks,
+    // which caused the page to freeze on "Signing you in..."
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        // Listen for both SIGNED_IN and INITIAL_SESSION — different Supabase
-        // versions fire different events when processing tokens from the hash.
-        if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
+      (event, session) => {
+        if (session?.user) {
           subscription.unsubscribe()
           clearTimeout(timeout)
-          await redirectUser(session.user.id)
+          window.location.href = '/home'
         }
       }
     )
 
-    // Also check if session already exists (e.g. tokens already processed)
-    async function checkExisting() {
-      const { data: { session } } = await supabase.auth.getSession()
+    // Fallback: if session was already processed before listener was set up
+    supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         subscription.unsubscribe()
         clearTimeout(timeout)
-        await redirectUser(session.user.id)
+        window.location.href = '/home'
       }
-    }
+    })
 
-    checkExisting()
-
-    // Timeout — if no session after 8 seconds, redirect to auth with error
+    // Hard fallback: redirect after 5 seconds regardless.
+    // If auth succeeded, /home will show the dashboard.
+    // If not, /home redirects to /auth.
     const timeout = setTimeout(() => {
       subscription.unsubscribe()
-      window.location.replace('/auth?error=timeout')
-    }, 8000)
+      window.location.href = '/home'
+    }, 5000)
 
     return () => {
       subscription.unsubscribe()
