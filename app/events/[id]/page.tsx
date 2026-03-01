@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getTopNavUser } from '@/lib/get-topnav-user'
 import EventPageClient from './event-page-client'
 import Link from 'next/link'
 import type { ChatMessage, ReactionGroup, ChatMember } from '@/components/GroupChat'
@@ -487,6 +488,8 @@ export default async function EventPage({
     })
   }
 
+  const topNavUser = await getTopNavUser()
+
   // JSON-LD structured data for SEO
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://rovacrew.com'
   const totalGoing = memberGoingCount + guestGoingCount + plusOneCount
@@ -599,6 +602,7 @@ export default async function EventPage({
       initialPlusOnes={allPlusOnes}
       currentUserPlusOnes={currentUserPlusOnes}
       plusOneCount={plusOneCount}
+      topNavUser={topNavUser}
     />
     </>
   )

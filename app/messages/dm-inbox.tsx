@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
+import TopNav from '@/components/TopNav'
+import type { TopNavUser } from '@/components/TopNav'
 
 interface Conversation {
   channelId: string
@@ -15,6 +17,7 @@ interface Conversation {
 interface Props {
   conversations: Conversation[]
   currentUserId: string
+  topNavUser: TopNavUser | null
 }
 
 function initials(name: string) {
@@ -23,7 +26,7 @@ function initials(name: string) {
 
 const TEAL = '#0D7377'
 
-export default function DMInbox({ conversations: initial, currentUserId }: Props) {
+export default function DMInbox({ conversations: initial, currentUserId, topNavUser }: Props) {
   const [conversations, setConversations] = useState(initial)
 
   // Real-time: listen for new messages on DM channels to update previews
@@ -87,12 +90,7 @@ export default function DMInbox({ conversations: initial, currentUserId }: Props
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      {/* Header */}
-      <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-2xl mx-auto flex items-center gap-3 px-4 h-14">
-          <h1 className="text-lg font-bold text-gray-900">Messages</h1>
-        </div>
-      </header>
+      <TopNav user={topNavUser} title="Messages" maxWidth="max-w-2xl" />
 
       <main className="max-w-2xl mx-auto">
         {conversations.length === 0 ? (

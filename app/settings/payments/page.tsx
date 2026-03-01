@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Suspense } from 'react'
+import TopNav from '@/components/TopNav'
+import type { TopNavUser } from '@/components/TopNav'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -67,9 +69,22 @@ function PaymentsPageInner() {
   const [connecting, setConnecting] = useState(false)
   const [openingDashboard, setOpeningDashboard] = useState(false)
   const [toast, setToast] = useState('')
+  const [topNavUser, setTopNavUser] = useState<TopNavUser | null>(null)
 
   useEffect(() => {
     fetchStatus()
+    // Load TopNav user data
+    import('@/lib/supabase/client').then(({ createClient }) => {
+      const supabase = createClient()
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (!user) return
+        supabase.from('profiles').select('full_name, avatar_url').eq('id', user.id).single().then(({ data: profile }) => {
+          const name = profile?.full_name ?? user.email?.split('@')[0] ?? 'User'
+          const initials = name.split(' ').slice(0, 2).map((n: string) => n[0]).join('').toUpperCase()
+          setTopNavUser({ name, avatarUrl: profile?.avatar_url ?? null, initials })
+        })
+      })
+    })
   }, [])
 
   useEffect(() => {
@@ -139,21 +154,7 @@ function PaymentsPageInner() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-2xl mx-auto flex items-center gap-3 px-4 h-14">
-          <Link
-            href="/settings/account"
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <ChevronLeftIcon />
-          </Link>
-          <div>
-            <p className="text-sm font-bold text-gray-900">Payments</p>
-            <p className="text-xs text-gray-400">Stripe Connect</p>
-          </div>
-        </div>
-      </header>
+      <TopNav user={topNavUser} title="Payments" showBackButton backHref="/settings/account" maxWidth="max-w-2xl" />
 
       <main className="max-w-2xl mx-auto px-4 py-8 space-y-6">
         {/* Toast */}

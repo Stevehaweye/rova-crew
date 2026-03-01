@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { getTopNavUser } from '@/lib/get-topnav-user'
 import ProfileClient from './profile-client'
 
 export default async function ProfilePage() {
@@ -11,15 +12,13 @@ export default async function ProfilePage() {
 
   if (!user) redirect('/auth?next=/profile')
 
-  // Fetch profile
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('full_name, avatar_url')
-    .eq('id', user.id)
-    .single()
-
-  // Fetch stats
-  const [{ count: groupCount }, { count: eventCount }] = await Promise.all([
+  // Fetch profile + stats + topnav user in parallel
+  const [profileResult, { count: groupCount }, { count: eventCount }, topNavUser] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('full_name, avatar_url')
+      .eq('id', user.id)
+      .single(),
     supabase
       .from('group_members')
       .select('id', { count: 'exact', head: true })
@@ -30,7 +29,10 @@ export default async function ProfilePage() {
       .select('id', { count: 'exact', head: true })
       .eq('user_id', user.id)
       .eq('status', 'going'),
+    getTopNavUser(),
   ])
+
+  const profile = profileResult.data
 
   return (
     <ProfileClient
@@ -40,6 +42,7 @@ export default async function ProfilePage() {
       groupsJoined={groupCount ?? 0}
       eventsAttended={eventCount ?? 0}
       memberSince={user.created_at ?? new Date().toISOString()}
+      topNavUser={topNavUser}
     />
   )
 }

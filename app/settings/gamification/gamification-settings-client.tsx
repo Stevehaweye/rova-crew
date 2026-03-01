@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import TopNav from '@/components/TopNav'
+import type { TopNavUser } from '@/components/TopNav'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -17,6 +19,7 @@ interface GroupInfo {
 interface Props {
   groups: GroupInfo[]
   initialPrefs: Record<string, Record<PrefKey, boolean>>
+  topNavUser: TopNavUser | null
 }
 
 interface ToggleItem {
@@ -79,7 +82,7 @@ function Toggle({
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function GamificationSettingsClient({ groups, initialPrefs }: Props) {
+export default function GamificationSettingsClient({ groups, initialPrefs, topNavUser }: Props) {
   const [prefs, setPrefs] = useState(initialPrefs)
 
   async function handleToggle(groupId: string, key: PrefKey) {
@@ -126,16 +129,7 @@ export default function GamificationSettingsClient({ groups, initialPrefs }: Pro
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
-      {/* Header */}
-      <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-lg mx-auto flex items-center justify-between px-4 h-14">
-          <p className="text-sm font-bold tracking-[0.14em] select-none">
-            <span style={{ color: '#0D7377' }}>ROVA</span>
-            <span style={{ color: '#C9982A' }}>CREW</span>
-          </p>
-          <p className="text-sm font-semibold text-gray-400">Gamification</p>
-        </div>
-      </header>
+      <TopNav user={topNavUser} title="Gamification" maxWidth="max-w-lg" />
 
       <main className="max-w-lg mx-auto px-4 py-6">
         {/* Back link */}

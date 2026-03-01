@@ -3,6 +3,7 @@ import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { filterPublicGroupIds } from '@/lib/discovery'
+import { getTopNavUser } from '@/lib/get-topnav-user'
 import DiscoveryClient from '../discovery-client'
 
 // ─── SEO Metadata ────────────────────────────────────────────────────────────
@@ -354,6 +355,7 @@ export default async function DiscoverPage() {
       isLoggedIn={!!user}
       jsonLd={JSON.stringify(jsonLd)}
       upcomingEvents={upcomingEventsList}
+      topNavUser={user ? await getTopNavUser() : null}
     />
   )
 }

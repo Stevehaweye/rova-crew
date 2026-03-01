@@ -8,6 +8,8 @@ import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/client'
 import ContactOrganiserModal from '@/components/ContactOrganiserModal'
 import FlyerActions from '@/components/events/FlyerActions'
+import UserMenu from '@/components/UserMenu'
+import type { TopNavUser } from '@/components/TopNav'
 import type { ChatMessage, ChatMember } from '@/components/GroupChat'
 
 const SharedCostTicker = dynamic(() => import('@/components/events/SharedCostTicker'), { ssr: false })
@@ -120,6 +122,7 @@ interface Props {
   initialPlusOnes: PlusOneData[]
   currentUserPlusOnes: Array<{ name: string; email?: string }>
   plusOneCount: number
+  topNavUser: TopNavUser | null
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -195,11 +198,13 @@ function Hero({
   group,
   colour,
   organiser,
+  topNavUser,
 }: {
   event: EventData
   group: GroupData
   colour: string
   organiser: OrganiserData | null
+  topNavUser: TopNavUser | null
 }) {
   return (
     <section className="relative h-64 sm:h-80 overflow-hidden">
@@ -233,12 +238,25 @@ function Hero({
           <span className="text-base font-black tracking-[0.14em] text-white/90 drop-shadow">ROVA</span>
           <span className="text-base font-black tracking-[0.14em] drop-shadow" style={{ color: '#C9982A' }}>CREW</span>
         </Link>
-        <Link
-          href={`/g/${group.slug}`}
-          className="text-white/70 hover:text-white text-xs font-semibold transition-colors drop-shadow"
-        >
-          &larr; {group.name}
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link
+            href={`/g/${group.slug}`}
+            className="text-white/70 hover:text-white text-xs font-semibold transition-colors drop-shadow"
+          >
+            &larr; {group.name}
+          </Link>
+          {topNavUser && (
+            <UserMenu
+              name={topNavUser.name}
+              avatarUrl={topNavUser.avatarUrl}
+              initials={topNavUser.initials}
+              groupSlug={topNavUser.groupSlug}
+              isAdmin={topNavUser.isAdmin}
+              companySlug={topNavUser.companySlug}
+              companyName={topNavUser.companyName}
+            />
+          )}
+        </div>
       </div>
 
       {/* Content */}
@@ -1093,6 +1111,7 @@ export default function EventPageClient({
   initialPlusOnes,
   currentUserPlusOnes,
   plusOneCount: initialPlusOneCount,
+  topNavUser,
 }: Props) {
   const router = useRouter()
   const colour = hex(group.primaryColour)
@@ -1510,7 +1529,7 @@ export default function EventPageClient({
   return (
     <div className="min-h-screen bg-gray-50 pb-32 lg:pb-10">
       {/* Hero */}
-      <Hero event={event} group={group} colour={colour} organiser={organiser} />
+      <Hero event={event} group={group} colour={colour} organiser={organiser} topNavUser={topNavUser} />
 
       {/* Info bar */}
       <InfoBar event={event} colour={colour} goingCount={goingCount} guestCount={guestCount} plusOneCount={plusOneCountState} />

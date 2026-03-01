@@ -3,8 +3,9 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getMemberTier } from '@/lib/tier-themes'
+import { isPlatformAdmin } from '@/lib/platform-admin'
 import CrewCardClient from './crew-card-client'
-import Link from 'next/link'
+import TopNav from '@/components/TopNav'
 
 export const metadata: Metadata = {
   title: 'My Card | ROVA Crew',
@@ -158,27 +159,29 @@ export default async function WalletPage() {
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
 
+  const fullName = profile.full_name
+  const userInitials = fullName
+    .split(' ')
+    .slice(0, 2)
+    .map((n: string) => n[0])
+    .join('')
+    .toUpperCase()
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Nav */}
-      <nav className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-gray-100">
-        <div className="max-w-lg mx-auto px-4 h-14 flex items-center gap-3">
-          <Link
-            href="/home"
-            className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
-            </svg>
-          </Link>
-          <Link href="/home" className="select-none">
-            <span className="text-base font-black tracking-[0.14em]" style={{ color: '#0D7377' }}>ROVA</span>
-            <span className="text-base font-black tracking-[0.14em]" style={{ color: '#C9982A' }}>CREW</span>
-          </Link>
-          <span className="text-gray-300 text-lg">&middot;</span>
-          <span className="text-sm font-semibold text-gray-600">My Card</span>
-        </div>
-      </nav>
+      <TopNav
+        user={{
+          name: fullName,
+          avatarUrl: profile.avatar_url,
+          initials: userInitials,
+          groupSlug: groups[0]?.slug ?? null,
+          isAdmin: isPlatformAdmin(user.email),
+        }}
+        title="My Card"
+        showBackButton
+        backHref="/home"
+        maxWidth="max-w-lg"
+      />
 
       <main className="max-w-lg mx-auto px-4 py-6 pb-24">
         <CrewCardClient

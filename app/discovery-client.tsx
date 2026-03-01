@@ -3,6 +3,8 @@
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { format } from 'date-fns'
+import UserMenu from '@/components/UserMenu'
+import type { TopNavUser } from '@/components/TopNav'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,6 +41,7 @@ interface Props {
   isLoggedIn?: boolean
   jsonLd?: string
   upcomingEvents?: UpcomingEvent[]
+  topNavUser?: TopNavUser | null
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -113,7 +116,7 @@ function MapPinIcon() {
 
 // ─── Hero ─────────────────────────────────────────────────────────────────────
 
-function Hero({ stats, isLoggedIn }: { stats: Props['stats']; isLoggedIn?: boolean }) {
+function Hero({ stats, isLoggedIn, topNavUser }: { stats: Props['stats']; isLoggedIn?: boolean; topNavUser?: TopNavUser | null }) {
   return (
     <section
       className="relative overflow-hidden"
@@ -121,6 +124,20 @@ function Hero({ stats, isLoggedIn }: { stats: Props['stats']; isLoggedIn?: boole
         background: 'linear-gradient(160deg, #0D7377 0%, #0A5C60 50%, #074548 100%)',
       }}
     >
+      {/* User menu — top right for logged-in users */}
+      {topNavUser && (
+        <div className="absolute top-5 right-5 sm:right-8 z-20">
+          <UserMenu
+            name={topNavUser.name}
+            avatarUrl={topNavUser.avatarUrl}
+            initials={topNavUser.initials}
+            groupSlug={topNavUser.groupSlug}
+            isAdmin={topNavUser.isAdmin}
+            companySlug={topNavUser.companySlug}
+            companyName={topNavUser.companyName}
+          />
+        </div>
+      )}
       {/* Dot grid texture */}
       <div
         className="absolute inset-0 opacity-[0.07]"
@@ -627,7 +644,7 @@ function Footer() {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function DiscoveryClient({ groups, trendingGroups, recommendedGroups, companyGroups, companyName, stats, isLoggedIn, jsonLd, upcomingEvents }: Props) {
+export default function DiscoveryClient({ groups, trendingGroups, recommendedGroups, companyGroups, companyName, stats, isLoggedIn, jsonLd, upcomingEvents, topNavUser }: Props) {
   const [search, setSearch] = useState('')
   const [category, setCategory] = useState('')
   const [sortBy, setSortBy] = useState<'most_active' | 'newest' | 'most_members'>('most_active')
@@ -677,7 +694,7 @@ export default function DiscoveryClient({ groups, trendingGroups, recommendedGro
       </nav>
 
       {/* Hero */}
-      <Hero stats={stats} isLoggedIn={isLoggedIn} />
+      <Hero stats={stats} isLoggedIn={isLoggedIn} topNavUser={topNavUser} />
 
       {/* Filter bar */}
       <div id="groups">

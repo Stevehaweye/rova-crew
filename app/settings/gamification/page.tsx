@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getTopNavUser } from '@/lib/get-topnav-user'
 import GamificationSettingsClient from './gamification-settings-client'
 
 export default async function GamificationSettingsPage() {
@@ -62,5 +63,7 @@ export default async function GamificationSettingsPage() {
       : { ...defaults }
   }
 
-  return <GamificationSettingsClient groups={groups} initialPrefs={prefsMap} />
+  const topNavUser = await getTopNavUser()
+
+  return <GamificationSettingsClient groups={groups} initialPrefs={prefsMap} topNavUser={topNavUser} />
 }

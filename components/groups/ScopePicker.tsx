@@ -16,6 +16,7 @@ interface ScopePickerProps {
   userLocation: string | null
   userDepartment: string | null
   onChange: (scope: GroupScopeInput) => void
+  value?: GroupScopeInput
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -87,12 +88,13 @@ export default function ScopePicker({
   userLocation,
   userDepartment,
   onChange,
+  value,
 }: ScopePickerProps) {
-  const defaultScope: GroupScopeInput['scopeType'] = userCompany ? 'company' : 'public'
+  const defaultScope: GroupScopeInput['scopeType'] = value?.scopeType ?? (userCompany ? 'company' : 'public')
 
   const [selected, setSelected] = useState<GroupScopeInput['scopeType']>(defaultScope)
-  const [locationOverride, setLocationOverride] = useState(userLocation ?? '')
-  const [departmentOverride, setDepartmentOverride] = useState(userDepartment ?? '')
+  const [locationOverride, setLocationOverride] = useState(value?.scopeLocation ?? userLocation ?? '')
+  const [departmentOverride, setDepartmentOverride] = useState(value?.scopeDepartment ?? userDepartment ?? '')
 
   // Build the current scope output
   const buildScope = useCallback(

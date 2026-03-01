@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import TopNav from '@/components/TopNav'
+import type { TopNavUser } from '@/components/TopNav'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -83,6 +85,8 @@ export default function AccountSettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
 
+  const [topNavUser, setTopNavUser] = useState<TopNavUser | null>(null)
+
   // Departure modal state
   const [showDepartureModal, setShowDepartureModal] = useState(false)
   const [departureStep, setDepartureStep] = useState<1 | 2>(1)
@@ -129,6 +133,23 @@ export default function AccountSettingsPage() {
         company,
       })
       setPersonalEmailInput(profileRow?.personal_email ?? '')
+
+      // Build TopNav user data
+      const { data: navProfile } = await supabase
+        .from('profiles')
+        .select('full_name, avatar_url')
+        .eq('id', user.id)
+        .single()
+      const name = navProfile?.full_name ?? user.email?.split('@')[0] ?? 'User'
+      const navInitials = name.split(' ').slice(0, 2).map((n: string) => n[0]).join('').toUpperCase()
+      setTopNavUser({
+        name,
+        avatarUrl: navProfile?.avatar_url ?? null,
+        initials: navInitials,
+        companySlug: company?.slug ?? null,
+        companyName: company?.name ?? null,
+      })
+
       setLoading(false)
     }
 
@@ -237,28 +258,7 @@ export default function AccountSettingsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* ── Nav bar ──────────────────────────────────────────────────────────── */}
-      <nav className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-gray-100">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-3">
-          <button
-            onClick={() => router.back()}
-            className="p-1.5 -ml-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-            aria-label="Go back"
-          >
-            <ChevronLeftIcon />
-          </button>
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <span className="text-base font-black tracking-[0.12em]" style={{ color: '#0D7377' }}>
-              ROVA
-            </span>
-            <span className="text-base font-black tracking-[0.12em]" style={{ color: '#C9982A' }}>
-              CREW
-            </span>
-            <span className="text-gray-300 mx-1">|</span>
-            <span className="text-sm font-semibold text-gray-700 truncate">Account</span>
-          </div>
-        </div>
-      </nav>
+      <TopNav user={topNavUser} title="Account" showBackButton maxWidth="max-w-2xl" />
 
       {/* ── Content ──────────────────────────────────────────────────────────── */}
       <main className="max-w-2xl mx-auto px-4 sm:px-6 py-8 space-y-6">

@@ -61,6 +61,34 @@ export default async function SettingsPage({
     .eq('user_id', user.id)
     .maybeSingle()
 
+  // Fetch current scope + admin's profile for scope editing
+  const [scopeResult, adminProfileResult] = await Promise.all([
+    serviceClient
+      .from('group_scope')
+      .select('scope_type, company_id, scope_location, scope_department')
+      .eq('group_id', group.id)
+      .maybeSingle(),
+    serviceClient
+      .from('profiles')
+      .select('company_id, work_location, department')
+      .eq('id', user.id)
+      .maybeSingle(),
+  ])
+
+  const scopeRow = scopeResult.data
+  const adminProfile = adminProfileResult.data
+
+  // Fetch admin's company info for ScopePicker
+  let adminCompany: { id: string; name: string; member_count: number } | null = null
+  if (adminProfile?.company_id) {
+    const { data: company } = await serviceClient
+      .from('companies')
+      .select('id, name, member_count')
+      .eq('id', adminProfile.company_id)
+      .maybeSingle()
+    adminCompany = company
+  }
+
   // Fetch payment admin's name if different from current user
   let paymentAdminName: string | null = null
   if (groupData?.payment_admin_id && groupData.payment_admin_id !== user.id) {
@@ -117,6 +145,15 @@ export default async function SettingsPage({
         focalX: groupData?.hero_focal_x ?? 50,
         focalY: groupData?.hero_focal_y ?? 50,
       }}
+      scope={scopeRow ? {
+        scopeType: scopeRow.scope_type,
+        companyId: scopeRow.company_id,
+        scopeLocation: scopeRow.scope_location,
+        scopeDepartment: scopeRow.scope_department,
+      } : null}
+      adminCompany={adminCompany}
+      adminLocation={adminProfile?.work_location ?? null}
+      adminDepartment={adminProfile?.department ?? null}
     />
   )
 }

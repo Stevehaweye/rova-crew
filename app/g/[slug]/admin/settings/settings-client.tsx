@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { TIER_THEMES } from '@/lib/tier-themes'
+import ScopePicker, { type GroupScopeInput } from '@/components/groups/ScopePicker'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -59,11 +60,20 @@ interface Props {
     focalX: number
     focalY: number
   }
+  scope: {
+    scopeType: string
+    companyId: string | null
+    scopeLocation: string | null
+    scopeDepartment: string | null
+  } | null
+  adminCompany: { id: string; name: string; member_count: number } | null
+  adminLocation: string | null
+  adminDepartment: string | null
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function SettingsClient({ group, payments, membershipFee, dmEnabled: initialDmEnabled, tierTheme: initialTierTheme, badgeAnnouncementsEnabled: initialBadgeAnnounce, watermarkPhotos: initialWatermark, location: initialLocation, groupProfile, heroImage }: Props) {
+export default function SettingsClient({ group, payments, membershipFee, dmEnabled: initialDmEnabled, tierTheme: initialTierTheme, badgeAnnouncementsEnabled: initialBadgeAnnounce, watermarkPhotos: initialWatermark, location: initialLocation, groupProfile, heroImage, scope, adminCompany, adminLocation, adminDepartment }: Props) {
   const searchParams = useSearchParams()
   const [toast, setToast] = useState('')
 
@@ -117,6 +127,36 @@ export default function SettingsClient({ group, payments, membershipFee, dmEnabl
   const [isDraggingFocal, setIsDraggingFocal] = useState(false)
   const heroInputRef = useRef<HTMLInputElement>(null)
   const focalImageRef = useRef<HTMLDivElement>(null)
+
+  // Enterprise scope state
+  const initialScopeType = scope?.scopeType ?? 'public'
+  const [scopeValue, setScopeValue] = useState<GroupScopeInput>({
+    scopeType: (scope?.scopeType ?? 'public') as GroupScopeInput['scopeType'],
+    companyId: scope?.companyId ?? undefined,
+    scopeLocation: scope?.scopeLocation ?? undefined,
+    scopeDepartment: scope?.scopeDepartment ?? undefined,
+  })
+  const [scopeSaving, setScopeSaving] = useState(false)
+
+  async function handleSaveScope() {
+    setScopeSaving(true)
+    try {
+      const res = await fetch(`/api/groups/${group.slug}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: scopeValue }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setToast(data.error || 'Failed to save scope')
+      } else {
+        setToast('Visibility scope updated')
+      }
+    } catch {
+      setToast('Network error. Please try again.')
+    }
+    setScopeSaving(false)
+  }
 
   // Show toast on return from Stripe (kept for backwards compat with old links)
   useEffect(() => {
@@ -806,6 +846,51 @@ export default function SettingsClient({ group, payments, membershipFee, dmEnabl
             </button>
           </div>
         </section>
+
+        {/* ── Enterprise Scope ─────────────────────────────────────── */}
+        {adminCompany && (
+          <section className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+                <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-900">Enterprise Scope</p>
+                <p className="text-xs text-gray-500">Control who can discover and join this group</p>
+              </div>
+            </div>
+
+            <div className="px-5 py-5 space-y-4">
+              <ScopePicker
+                userCompany={adminCompany}
+                userLocation={adminLocation}
+                userDepartment={adminDepartment}
+                value={scopeValue}
+                onChange={setScopeValue}
+              />
+
+              {/* Warning when narrowing scope from public/invitation */}
+              {initialScopeType === 'public' && scopeValue.scopeType !== 'public' && scopeValue.scopeType !== 'invitation' && (
+                <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
+                  <p className="text-xs text-amber-800 leading-relaxed">
+                    <strong>Note:</strong> Existing members keep access, but new users outside this scope won&apos;t be able to discover or join.
+                  </p>
+                </div>
+              )}
+
+              <button
+                onClick={handleSaveScope}
+                disabled={scopeSaving}
+                className="w-full py-3 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                style={{ backgroundColor: group.colour }}
+              >
+                {scopeSaving ? 'Saving...' : 'Save Scope'}
+              </button>
+            </div>
+          </section>
+        )}
 
         {/* ── Payments Toggle ──────────────────────────────────────── */}
         <section className="bg-white rounded-2xl border border-gray-100 overflow-hidden">

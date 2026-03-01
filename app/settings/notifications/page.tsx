@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getTopNavUser } from '@/lib/get-topnav-user'
 import NotificationsClient from './notifications-client'
 
 export default async function NotificationSettingsPage() {
@@ -47,5 +48,7 @@ export default async function NotificationSettingsPage() {
       }
     : defaults
 
-  return <NotificationsClient initialPreferences={preferences} />
+  const topNavUser = await getTopNavUser()
+
+  return <NotificationsClient initialPreferences={preferences} topNavUser={topNavUser} />
 }

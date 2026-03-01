@@ -5,7 +5,8 @@ import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { isPlatformAdmin } from '@/lib/platform-admin'
-import UserMenu from './user-menu'
+import TopNav from '@/components/TopNav'
+import type { TopNavUser } from '@/components/TopNav'
 import PushPermissionBanner from '@/components/PushPermissionBanner'
 import PostEventCard, { type PostEventHighlight } from '@/components/feed/PostEventCard'
 
@@ -117,50 +118,7 @@ function CalendarIcon() {
 }
 
 // ─── Top Navigation ───────────────────────────────────────────────────────────
-
-function TopNav({
-  profile,
-  groupSlug,
-  isAdmin,
-  companySlug,
-  companyName,
-}: {
-  profile: Profile
-  groupSlug?: string | null
-  isAdmin?: boolean
-  companySlug?: string | null
-  companyName?: string | null
-}) {
-  const name = profile.full_name
-  const abbr = initials(name)
-
-  return (
-    <nav className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-gray-100">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-        {/* Wordmark */}
-        <Link href="/home" className="select-none">
-          <span className="text-xl font-black tracking-[0.14em]" style={{ color: '#0D7377' }}>
-            ROVA
-          </span>
-          <span className="text-xl font-black tracking-[0.14em]" style={{ color: '#C9982A' }}>
-            CREW
-          </span>
-        </Link>
-
-        {/* User identity */}
-        <UserMenu
-          name={name}
-          avatarUrl={profile.avatar_url}
-          initials={abbr}
-          groupSlug={groupSlug}
-          isAdmin={isAdmin}
-          companySlug={companySlug}
-          companyName={companyName}
-        />
-      </div>
-    </nav>
-  )
-}
+// Uses shared TopNav component from @/components/TopNav
 
 // ─── Empty State ──────────────────────────────────────────────────────────────
 
@@ -885,11 +843,15 @@ export default async function HomePage() {
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       <TopNav
-        profile={profile}
-        groupSlug={groups[0]?.slug ?? null}
-        isAdmin={isAdmin}
-        companySlug={companySlug}
-        companyName={companyName}
+        user={{
+          name: profile.full_name,
+          avatarUrl: profile.avatar_url,
+          initials: initials(profile.full_name),
+          groupSlug: groups[0]?.slug ?? null,
+          isAdmin,
+          companySlug,
+          companyName,
+        }}
       />
 
       <main>

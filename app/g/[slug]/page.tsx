@@ -4,6 +4,9 @@ import { format } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getHallOfFameRecords, type HallOfFameRecord } from '@/lib/hall-of-fame'
+import { getTopNavUser } from '@/lib/get-topnav-user'
+import UserMenu from '@/components/UserMenu'
+import type { TopNavUser } from '@/components/TopNav'
 import { JoinCard } from './join-button'
 import ContactOrganiserButton from '@/components/ContactOrganiserButton'
 import MessageMemberButton from '@/components/MessageMemberButton'
@@ -165,7 +168,7 @@ function PrivateGroupView({ group, colour }: { group: Group; colour: string }) {
 
 // ─── Hero section ─────────────────────────────────────────────────────────────
 
-function Hero({ group, colour }: { group: Group; colour: string }) {
+function Hero({ group, colour, topNavUser }: { group: Group; colour: string; topNavUser: TopNavUser | null }) {
   const focalX = group.hero_focal_x ?? 50
   const focalY = group.hero_focal_y ?? 50
 
@@ -225,6 +228,17 @@ function Hero({ group, colour }: { group: Group; colour: string }) {
             CREW
           </span>
         </Link>
+        {topNavUser && (
+          <UserMenu
+            name={topNavUser.name}
+            avatarUrl={topNavUser.avatarUrl}
+            initials={topNavUser.initials}
+            groupSlug={topNavUser.groupSlug}
+            isAdmin={topNavUser.isAdmin}
+            companySlug={topNavUser.companySlug}
+            companyName={topNavUser.companyName}
+          />
+        )}
       </div>
 
       {/* Hero content — bottom-left */}
@@ -593,6 +607,8 @@ export default async function GroupPage({
     data: { user },
   } = await supabase.auth.getUser()
 
+  const topNavUser = await getTopNavUser()
+
   // Check existing membership
   let membership: { role: string; status: string } | null = null
   if (user) {
@@ -812,7 +828,7 @@ export default async function GroupPage({
       />
 
       {/* Hero */}
-      <Hero group={group} colour={colour} />
+      <Hero group={group} colour={colour} topNavUser={topNavUser} />
 
       {/* Stats bar */}
       <StatsBar group={group} colour={colour} memberCount={memberCount} nextEventDate={nextEventDate} />

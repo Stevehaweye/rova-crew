@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getTopNavUser } from '@/lib/get-topnav-user'
 import PhotoConsentClient from './photo-consent-client'
 
 export default async function PhotoConsentPage() {
@@ -57,5 +58,7 @@ export default async function PhotoConsentPage() {
     initialConsent[row.group_id] = row.consent_level ?? 'always'
   }
 
-  return <PhotoConsentClient groups={groups} initialConsent={initialConsent} />
+  const topNavUser = await getTopNavUser()
+
+  return <PhotoConsentClient groups={groups} initialConsent={initialConsent} topNavUser={topNavUser} />
 }

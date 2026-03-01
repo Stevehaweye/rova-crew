@@ -79,16 +79,68 @@ export async function POST(
     if (typeof body.payments_enabled === 'boolean') updates.payments_enabled = body.payments_enabled
     if (typeof body.payment_admin_id === 'string') updates.payment_admin_id = body.payment_admin_id
 
-    if (Object.keys(updates).length === 0) {
+    // Handle enterprise scope changes separately
+    const scopePayload = body.scope as { scopeType?: string; companyId?: string; scopeLocation?: string; scopeDepartment?: string } | undefined
+
+    if (!scopePayload && Object.keys(updates).length === 0) {
       return NextResponse.json({ error: 'No valid fields provided' }, { status: 400 })
     }
 
     const serviceClient = createServiceClient()
 
-    await serviceClient
-      .from('groups')
-      .update(updates)
-      .eq('id', group.id)
+    // Apply group field updates
+    if (Object.keys(updates).length > 0) {
+      await serviceClient
+        .from('groups')
+        .update(updates)
+        .eq('id', group.id)
+    }
+
+    // Apply scope changes
+    if (scopePayload && scopePayload.scopeType) {
+      const st = scopePayload.scopeType
+
+      if (st === 'public' || st === 'invitation') {
+        // Remove enterprise scope row and mark group as public/invitation
+        await serviceClient
+          .from('group_scope')
+          .delete()
+          .eq('group_id', group.id)
+
+        await serviceClient
+          .from('groups')
+          .update({
+            is_public: st === 'public',
+            join_approval_required: st === 'invitation',
+          })
+          .eq('id', group.id)
+      } else if (['company', 'location', 'department', 'loc_dept'].includes(st)) {
+        // Upsert enterprise scope row
+        const { error: upsertErr } = await serviceClient
+          .from('group_scope')
+          .upsert(
+            {
+              group_id: group.id,
+              scope_type: st,
+              company_id: scopePayload.companyId ?? null,
+              scope_location: scopePayload.scopeLocation ?? null,
+              scope_department: scopePayload.scopeDepartment ?? null,
+            },
+            { onConflict: 'group_id' }
+          )
+
+        if (upsertErr) {
+          console.error('[group-settings] scope upsert error:', upsertErr)
+          return NextResponse.json({ error: 'Failed to update scope' }, { status: 500 })
+        }
+
+        // Enterprise-scoped groups are not public
+        await serviceClient
+          .from('groups')
+          .update({ is_public: false })
+          .eq('id', group.id)
+      }
+    }
 
     return NextResponse.json({ success: true })
   } catch (err) {

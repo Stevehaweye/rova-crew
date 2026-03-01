@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getTopNavUser } from '@/lib/get-topnav-user'
 import DMInbox from './dm-inbox'
 
 export default async function MessagesPage() {
@@ -13,6 +14,7 @@ export default async function MessagesPage() {
   if (!user) redirect('/auth?next=/messages')
 
   const serviceClient = createServiceClient()
+  const topNavUser = await getTopNavUser()
 
   // 1. Get user's DM channel memberships
   const { data: myChannelMemberships } = await serviceClient
@@ -29,6 +31,7 @@ export default async function MessagesPage() {
       <DMInbox
         conversations={[]}
         currentUserId={user.id}
+        topNavUser={topNavUser}
       />
     )
   }
@@ -112,6 +115,7 @@ export default async function MessagesPage() {
     <DMInbox
       conversations={conversations}
       currentUserId={user.id}
+      topNavUser={topNavUser}
     />
   )
 }
