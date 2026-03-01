@@ -254,7 +254,10 @@ function AuthPageInner() {
       </div>
 
       {/* ── RIGHT PANEL ─────────────────────────────────────────────────────── */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center min-h-screen bg-gray-50 px-6 py-12">
+      <div
+        className="w-full lg:w-1/2 flex items-center justify-center min-h-screen bg-gray-50 px-6 py-12 relative bg-cover bg-center"
+        style={{ backgroundImage: 'url(/heroes/cycling.png)' }}
+      >
         <div className="w-full max-w-md">
 
           {/* Card */}
