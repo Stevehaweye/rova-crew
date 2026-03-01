@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { format } from 'date-fns'
 import UserMenu from '@/components/UserMenu'
 import type { TopNavUser } from '@/components/TopNav'
+import ImageCycler from '@/components/ImageCycler'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -124,6 +125,10 @@ function Hero({ stats, isLoggedIn, topNavUser }: { stats: Props['stats']; isLogg
         background: 'linear-gradient(160deg, #0D7377 0%, #0A5C60 50%, #074548 100%)',
       }}
     >
+      {/* Cycling background images */}
+      <ImageCycler />
+      {/* Teal overlay for text readability */}
+      <div className="absolute inset-0 bg-[#0D7377]/70 pointer-events-none" />
       {/* User menu — top right for logged-in users */}
       {topNavUser && (
         <div className="absolute top-5 right-5 sm:right-8 z-20">
@@ -138,14 +143,6 @@ function Hero({ stats, isLoggedIn, topNavUser }: { stats: Props['stats']; isLogg
           />
         </div>
       )}
-      {/* Dot grid texture */}
-      <div
-        className="absolute inset-0 opacity-[0.07]"
-        style={{
-          backgroundImage: 'radial-gradient(rgba(255,255,255,0.8) 1px, transparent 1px)',
-          backgroundSize: '28px 28px',
-        }}
-      />
       {/* Radial glow */}
       <div
         className="absolute inset-0"
