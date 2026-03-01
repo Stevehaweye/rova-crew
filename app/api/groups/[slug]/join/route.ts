@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { canAccessGroup } from '@/lib/discovery'
 import { sendJoinRequestEmail } from '@/lib/email'
 
 export async function POST(
@@ -44,6 +45,12 @@ export async function POST(
     }
     if (existing?.status === 'pending') {
       return NextResponse.json({ status: 'pending', alreadyPending: true })
+    }
+
+    // Enterprise scope check — user must match group's scope to join
+    const hasAccess = await canAccessGroup(group.id, user.id)
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'You do not have access to this group' }, { status: 403 })
     }
 
     const newStatus = group.join_approval_required ? 'pending' : 'approved'

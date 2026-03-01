@@ -627,11 +627,7 @@ export default async function GroupPage({
 
   // Private / enterprise scope guard
   if (!isApprovedMember) {
-    if (!group.is_public) {
-      return <PrivateGroupView group={group} colour={hex(group.primary_colour)} />
-    }
-
-    // Check enterprise scope — if the group has a scope entry, the user must match
+    // Check enterprise scope first — if the group has a scope entry, use that logic
     const svc = createServiceClient()
     const { data: scopeRow } = await svc
       .from('group_scope')
@@ -680,6 +676,9 @@ export default async function GroupPage({
       if (!canAccess) {
         return <PrivateGroupView group={group} colour={hex(group.primary_colour)} />
       }
+    } else if (!group.is_public) {
+      // Truly private group (no enterprise scope) — invite only
+      return <PrivateGroupView group={group} colour={hex(group.primary_colour)} />
     }
   }
 
