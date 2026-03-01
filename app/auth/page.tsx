@@ -3,7 +3,6 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import ImageCycler from '@/components/ImageCycler'
 
 interface CompanyBranding {
   name: string
@@ -210,10 +209,6 @@ function AuthPageInner() {
         className="hidden lg:flex lg:w-1/2 relative flex-col justify-between p-14 overflow-hidden"
         style={{ backgroundColor: '#0D7377' }}
       >
-        {/* Cycling background images */}
-        <ImageCycler />
-        {/* Teal overlay for text readability */}
-        <div className="absolute inset-0 bg-[#0D7377]/75 pointer-events-none" />
         {/* Decorative background circles */}
         <div className="absolute -top-28 -right-28 w-[28rem] h-[28rem] rounded-full bg-white opacity-[0.06] pointer-events-none" />
         <div className="absolute -bottom-36 -left-20 w-96 h-96 rounded-full bg-white opacity-[0.06] pointer-events-none" />
