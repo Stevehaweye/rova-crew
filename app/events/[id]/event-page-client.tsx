@@ -682,6 +682,7 @@ function RsvpCard({
   onGuestRsvp,
   guestError,
   guestFieldErrors,
+  checkoutError,
 }: {
   event: EventData
   group: GroupData
@@ -704,6 +705,7 @@ function RsvpCard({
   onGuestRsvp: () => void
   guestError: string
   guestFieldErrors: { firstName?: string; lastName?: string; email?: string }
+  checkoutError: string
 }) {
   const priceLabel = event.pricePence ? `\u00a3${(event.pricePence / 100).toFixed(2)}` : null
 
@@ -747,7 +749,7 @@ function RsvpCard({
               )}
             </button>
             {rsvpStatus === 'error' && (
-              <p className="text-red-500 text-xs mt-1">Something went wrong. Try again.</p>
+              <p className="text-red-500 text-xs mt-1">{checkoutError || 'Something went wrong. Try again.'}</p>
             )}
           </div>
         ) : (
@@ -782,7 +784,7 @@ function RsvpCard({
             })}
 
             {rsvpStatus === 'error' && (
-              <p className="text-red-500 text-xs mt-1">Something went wrong. Try again.</p>
+              <p className="text-red-500 text-xs mt-1">{checkoutError || 'Something went wrong. Try again.'}</p>
             )}
           </div>
         )
@@ -1136,6 +1138,7 @@ export default function EventPageClient({
   const [rsvpStatus, setRsvpStatus] = useState<RsvpStatus>(
     currentUserRsvp ? currentUserRsvp.status : 'idle'
   )
+  const [checkoutError, setCheckoutError] = useState('')
 
   // Guest RSVP state
   const [guestRsvpState, setGuestRsvpState] = useState<GuestRsvpStatus>('idle')
@@ -1288,6 +1291,7 @@ export default function EventPageClient({
     // For PAID events, "going" triggers Stripe Checkout
     if (event.paymentType === 'fixed' && status === 'going' && event.pricePence) {
       setRsvpStatus('loading')
+      setCheckoutError('')
       try {
         const res = await fetch('/api/stripe/checkout', {
           method: 'POST',
@@ -1299,9 +1303,12 @@ export default function EventPageClient({
           window.location.href = data.url
           return
         }
+        console.error('[rsvp] checkout failed:', data.error)
+        setCheckoutError(data.error ?? 'Payment setup failed. Please try again.')
         setRsvpStatus('error')
       } catch (err) {
         console.error('[rsvp] checkout error:', err)
+        setCheckoutError('Could not connect to payment service. Please try again.')
         setRsvpStatus('error')
       }
       return
@@ -1401,11 +1408,12 @@ export default function EventPageClient({
           window.location.href = data.url
           return
         }
-        setGuestError('Payment setup failed. Please try again.')
+        console.error('[guest-rsvp] checkout failed:', data.error)
+        setGuestError(data.error ?? 'Payment setup failed. Please try again.')
         setGuestRsvpState('error')
       } catch (err) {
         console.error('[guest-rsvp] checkout error:', err)
-        setGuestError('Payment setup failed. Please try again.')
+        setGuestError('Could not connect to payment service. Please try again.')
         setGuestRsvpState('error')
       }
       return
@@ -1610,6 +1618,7 @@ export default function EventPageClient({
                 onGuestRsvp={handleGuestRsvp}
                 guestError={guestError}
                 guestFieldErrors={guestFieldErrors}
+                checkoutError={checkoutError}
               />
             </div>
 
@@ -1711,6 +1720,7 @@ export default function EventPageClient({
               onGuestRsvp={handleGuestRsvp}
               guestError={guestError}
               guestFieldErrors={guestFieldErrors}
+              checkoutError={checkoutError}
             />
             {currentUser && rsvpStatus === 'going' && event.paymentType !== 'fixed' && (
               <PlusOneSection
