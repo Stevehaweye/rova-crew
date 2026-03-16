@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
   // Fetch group details
   const { data: groups } = await svc
     .from('groups')
-    .select('id, name, slug, tagline, category, primary_colour')
+    .select('id, name, slug, tagline, category, primary_colour, logo_url')
     .in('id', groupIds)
 
   if (!groups || groups.length === 0) {
@@ -52,6 +52,7 @@ export async function GET(request: NextRequest) {
       tagline: g.tagline,
       category: g.category,
       primaryColour: g.primary_colour,
+      logoUrl: g.logo_url,
       memberCount: counts[g.id] ?? 0,
     }))
     .sort((a, b) => b.memberCount - a.memberCount)

@@ -58,6 +58,7 @@ interface SuggestedGroup {
   tagline: string | null
   category: string
   primaryColour: string
+  logoUrl?: string | null
   memberCount: number
 }
 
@@ -310,11 +311,25 @@ function Step3Groups({ groups, groupsLoading, loading, onFinish, onSkip }: Step3
               rel="noopener noreferrer"
               className="flex rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white hover:shadow-md transition-shadow"
             >
-              {/* Left colour bar */}
-              <div className="w-1.5 flex-shrink-0" style={{ backgroundColor: group.primaryColour }} />
+              {/* Logo or colour bar */}
+              {group.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={group.logoUrl}
+                  alt=""
+                  className="w-14 h-14 rounded-xl object-cover m-3 flex-shrink-0"
+                />
+              ) : (
+                <div
+                  className="w-14 h-14 rounded-xl flex items-center justify-center text-white font-bold text-lg m-3 flex-shrink-0"
+                  style={{ backgroundColor: group.primaryColour }}
+                >
+                  {(group.name[0] ?? '?').toUpperCase()}
+                </div>
+              )}
 
               {/* Card body */}
-              <div className="flex-1 px-4 py-4 flex items-center justify-between gap-3 min-w-0">
+              <div className="flex-1 pr-4 py-4 flex items-center justify-between gap-3 min-w-0">
                 <div className="min-w-0 flex-1">
                   <h3 className="font-semibold text-gray-900 text-sm truncate">{group.name}</h3>
                   {group.tagline && (

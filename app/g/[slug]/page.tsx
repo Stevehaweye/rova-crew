@@ -593,8 +593,9 @@ export default async function GroupPage({
   const { invite: inviteToken } = await searchParams
   const supabase = await createClient()
 
-  // Fetch group
-  const { data: group } = await supabase
+  // Fetch group (use service client to see enterprise groups behind RLS)
+  const groupSvc = createServiceClient()
+  const { data: group } = await groupSvc
     .from('groups')
     .select('*')
     .eq('slug', slug)
