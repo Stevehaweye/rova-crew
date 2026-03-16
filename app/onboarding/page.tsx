@@ -618,9 +618,22 @@ export default function OnboardingPage() {
         .map((i) => INTEREST_TO_CATEGORY[i])
         .filter((c): c is string => !!c)
 
-      if (categories.length > 0) {
-        try {
-          const supabase = createClient()
+      try {
+        const supabase = createClient()
+
+        // Fetch company-scoped groups (if enterprise user)
+        let companyGroups: SuggestedGroup[] = []
+        if (detectedCompany) {
+          const compRes = await fetch(`/api/company/groups?company_id=${encodeURIComponent(detectedCompany.id)}`)
+          if (compRes.ok) {
+            const compData = await compRes.json()
+            companyGroups = (compData.groups ?? []) as SuggestedGroup[]
+          }
+        }
+
+        // Fetch public groups matching interests
+        let publicGroups: SuggestedGroup[] = []
+        if (categories.length > 0) {
           const uniqueCategories = [...new Set(categories)]
           const { data: groups } = await supabase
             .from('groups')
@@ -642,26 +655,25 @@ export default function OnboardingPage() {
               counts[r.group_id] = (counts[r.group_id] ?? 0) + 1
             }
 
-            setSuggestedGroups(
-              groups
-                .map((g: { id: string; name: string; slug: string; tagline: string | null; category: string; primary_colour: string }) => ({
-                  id: g.id,
-                  name: g.name,
-                  slug: g.slug,
-                  tagline: g.tagline,
-                  category: g.category,
-                  primaryColour: g.primary_colour,
-                  memberCount: counts[g.id] ?? 0,
-                }))
-                .sort((a: SuggestedGroup, b: SuggestedGroup) => b.memberCount - a.memberCount)
-            )
-          } else {
-            setSuggestedGroups([])
+            publicGroups = groups
+              .map((g: { id: string; name: string; slug: string; tagline: string | null; category: string; primary_colour: string }) => ({
+                id: g.id,
+                name: g.name,
+                slug: g.slug,
+                tagline: g.tagline,
+                category: g.category,
+                primaryColour: g.primary_colour,
+                memberCount: counts[g.id] ?? 0,
+              }))
+              .sort((a: SuggestedGroup, b: SuggestedGroup) => b.memberCount - a.memberCount)
           }
-        } catch {
-          setSuggestedGroups([])
         }
-      } else {
+
+        // Merge: company groups first, then public (deduplicated)
+        const seenIds = new Set(companyGroups.map((g) => g.id))
+        const merged = [...companyGroups, ...publicGroups.filter((g) => !seenIds.has(g.id))]
+        setSuggestedGroups(merged)
+      } catch {
         setSuggestedGroups([])
       }
       setGroupsLoading(false)
