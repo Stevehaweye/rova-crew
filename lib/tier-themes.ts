@@ -45,3 +45,25 @@ export function getMemberTier(
   const theme = TIER_THEMES[tierTheme ?? 'generic'] ?? TIER_THEMES.generic
   return { tier: theme[idx], level, threshold: bracket.min }
 }
+
+/**
+ * Reverse of getMemberTier: given a stored sticky tier name, return its level
+ * (1–5). Returns null when the name doesn't match any known theme, so callers
+ * can fall back to the score-derived level.
+ */
+export function getTierLevelByName(
+  tierName: string | null | undefined,
+  tierTheme?: string,
+  customTierNames?: string[] | null
+): number | null {
+  if (!tierName) return null
+
+  if (tierTheme === 'custom' && customTierNames && customTierNames.length === 5) {
+    const idx = customTierNames.indexOf(tierName)
+    return idx >= 0 ? idx + 1 : null
+  }
+
+  const theme = TIER_THEMES[tierTheme ?? 'generic'] ?? TIER_THEMES.generic
+  const idx = theme.indexOf(tierName)
+  return idx >= 0 ? idx + 1 : null
+}

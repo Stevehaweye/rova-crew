@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { awardSpiritPoints } from '@/lib/spirit-points'
 import { recalculateGroupCrewScores } from '@/lib/crew-score'
-import { checkAndAwardBadges } from '@/lib/badges'
 import { updateStreakOnCheckIn } from '@/lib/streaks'
 import { calculateGroupHealthScore } from '@/lib/health-score'
 
@@ -93,27 +92,46 @@ export async function POST(
         }, { status: 409 })
       }
 
-      const { error: updateErr } = await supabase
+      // Conditional update: only flip the row if checked_in_at is still null.
+      // Two concurrent scans would both pass the null check above; this
+      // .is('checked_in_at', null) guards against double-firing side effects.
+      const { data: flipped, error: updateErr } = await supabase
         .from('rsvps')
         .update({ checked_in_at: new Date().toISOString() })
         .eq('id', rsvp.id)
+        .is('checked_in_at', null)
+        .select('id')
 
       if (updateErr) {
         console.error('[checkin] rsvp update error:', updateErr)
         return NextResponse.json({ success: false, error: 'Check-in failed.' }, { status: 500 })
       }
 
-      // Award spirit points for attendance (fire-and-forget)
+      if (!flipped || flipped.length === 0) {
+        // Another concurrent scan already checked them in.
+        const profile = rsvp.profiles as unknown as { full_name: string; avatar_url: string | null }
+        return NextResponse.json({
+          success: false,
+          error: 'Already checked in',
+          detail: `${profile?.full_name ?? 'This person'} was already checked in.`,
+          attendee: {
+            name: profile?.full_name ?? 'Member',
+            avatarUrl: profile?.avatar_url ?? null,
+            type: 'member',
+          },
+        }, { status: 409 })
+      }
+
+      // Award spirit points for attendance (fire-and-forget). awardSpiritPoints
+      // internally triggers checkAndAwardBadges, so we don't need a separate
+      // call here — the previous explicit invocation was a triple-fire per
+      // check-in (see also updateStreakOnCheckIn which also runs it).
       awardSpiritPoints(user_id, event.group_id, 'event_attendance', eventId)
         .catch((err) => console.error('[checkin] spirit points error:', err))
 
       // Recalculate group crew scores (fire-and-forget)
       recalculateGroupCrewScores(event.group_id)
         .catch((err) => console.error('[checkin] crew score recalc error:', err))
-
-      // Check and award badges (fire-and-forget)
-      checkAndAwardBadges(user_id, event.group_id)
-        .catch((err) => console.error('[checkin] badge check error:', err))
 
       // Update attendance streak (fire-and-forget)
       updateStreakOnCheckIn(user_id, event.group_id, eventId)

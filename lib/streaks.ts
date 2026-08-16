@@ -58,22 +58,31 @@ export async function updateStreakOnCheckIn(
     if (!lastEvent) {
       newStreak = 1
     } else {
-      // Check if any group events occurred between last attended and this one
-      const { data: eventsBetween } = await svc
-        .from('events')
-        .select('id')
-        .eq('group_id', groupId)
-        .gt('starts_at', lastEvent.starts_at)
-        .lt('starts_at', event.starts_at)
-        .limit(1)
+      // Look for group events between the previously-attended event and this
+      // one that this user did NOT check into. Simply counting intervening
+      // events regardless of attendance broke the streak on out-of-order QR
+      // scans (event B scanned before event A on the same night), so we
+      // filter by rsvps.checked_in_at.
+      const [{ data: eventsBetween }, { data: attendedBetween }] = await Promise.all([
+        svc
+          .from('events')
+          .select('id')
+          .eq('group_id', groupId)
+          .gt('starts_at', lastEvent.starts_at)
+          .lt('starts_at', event.starts_at),
+        svc
+          .from('rsvps')
+          .select('event_id')
+          .eq('user_id', userId)
+          .not('checked_in_at', 'is', null)
+          .gt('checked_in_at', lastEvent.starts_at)
+          .lt('checked_in_at', event.starts_at),
+      ])
 
-      if (eventsBetween && eventsBetween.length > 0) {
-        // Events occurred in between that they missed — streak broken
-        newStreak = 1
-      } else {
-        // No events in between — streak continues
-        newStreak = currentStreak + 1
-      }
+      const attendedIds = new Set((attendedBetween ?? []).map((r) => r.event_id))
+      const missedAny = (eventsBetween ?? []).some((e) => !attendedIds.has(e.id))
+
+      newStreak = missedAny ? 1 : currentStreak + 1
     }
   }
 

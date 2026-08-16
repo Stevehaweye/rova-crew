@@ -559,26 +559,41 @@ export default function OnboardingPage() {
   const [personalEmail, setPersonalEmail] = useState('')
   const [companyLoading, setCompanyLoading] = useState(true)
 
-  // Pre-fill full name from Supabase auth metadata
+  // Single init effect: check auth, redirect already-onboarded users, prefill
+  // name, detect company. Folding these into one avoids the two-getUser() and
+  // two-round-trip waterfall the audit flagged.
   useEffect(() => {
     const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      const name = user?.user_metadata?.full_name as string | undefined
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) {
+        // Middleware normally covers this, but guard here too.
+        window.location.href = '/auth?next=/onboarding'
+        return
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('onboarding_complete')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      if (profile?.onboarding_complete) {
+        window.location.replace('/home')
+        return
+      }
+
+      const name = user.user_metadata?.full_name as string | undefined
       if (name) {
         setFormData((prev) => ({ ...prev, fullName: prev.fullName || name }))
       }
-    })
-  }, [])
 
-  // Detect company from user's email domain
-  useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user?.email) {
-        lookupCompanyByEmail(user.email).then((company) => {
+      if (user.email) {
+        try {
+          const company = await lookupCompanyByEmail(user.email)
           setDetectedCompany(company)
+        } finally {
           setCompanyLoading(false)
-        })
+        }
       } else {
         setCompanyLoading(false)
       }
@@ -720,28 +735,32 @@ export default function OnboardingPage() {
       // Upload avatar to Supabase Storage
       if (formData.avatarFile) {
         const ext = formData.avatarFile.name.split('.').pop() ?? 'jpg'
-        const path = `${user.id}/${Date.now()}.${ext}`
+        const path = `avatars/${user.id}/${Date.now()}.${ext}`
 
         const { data: upload, error: uploadErr } = await supabase.storage
-          .from('avatars')
+          .from('group-logos')
           .upload(path, formData.avatarFile, { upsert: true })
 
         if (uploadErr) {
           // Non-fatal — proceed without avatar
           console.warn('[onboarding] avatar upload failed:', uploadErr.message)
         } else if (upload) {
-          avatarUrl = supabase.storage.from('avatars').getPublicUrl(upload.path).data.publicUrl
+          avatarUrl = supabase.storage.from('group-logos').getPublicUrl(upload.path).data.publicUrl
         }
       }
 
-      // Update profile row
+      // Update profile row. Only write avatar_url when we actually have one so
+      // an OAuth-provided avatar isn't wiped when the user skips this step or
+      // the upload fails.
       const profileUpdate: Record<string, unknown> = {
         full_name: formData.fullName,
         bio: formData.bio || null,
         location: formData.location || null,
         interests: formData.interests,
-        avatar_url: avatarUrl,
         onboarding_complete: true,
+      }
+      if (avatarUrl) {
+        profileUpdate.avatar_url = avatarUrl
       }
 
       if (detectedCompany) {

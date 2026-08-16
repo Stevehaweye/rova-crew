@@ -125,7 +125,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ url: session.url })
   } catch (err) {
     console.error('[subscription-checkout] error:', err)
-    const message = err instanceof Error ? err.message : 'Something went wrong'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Failed to create subscription checkout session' },
+      { status: 500 }
+    )
   }
 }

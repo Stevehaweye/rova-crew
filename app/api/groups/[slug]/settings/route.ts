@@ -115,6 +115,21 @@ export async function POST(
           })
           .eq('id', group.id)
       } else if (['company', 'location', 'department', 'loc_dept'].includes(st)) {
+        // Verify caller belongs to the target company before allowing scope retarget
+        if (!scopePayload.companyId) {
+          return NextResponse.json({ error: 'companyId required for this scope' }, { status: 400 })
+        }
+
+        const { data: callerProfile } = await serviceClient
+          .from('profiles')
+          .select('company_id')
+          .eq('id', user.id)
+          .maybeSingle()
+
+        if (!callerProfile?.company_id || callerProfile.company_id !== scopePayload.companyId) {
+          return NextResponse.json({ error: 'Cannot scope group to a company you do not belong to' }, { status: 403 })
+        }
+
         // Upsert enterprise scope row
         const { error: upsertErr } = await serviceClient
           .from('group_scope')
@@ -122,7 +137,7 @@ export async function POST(
             {
               group_id: group.id,
               scope_type: st,
-              company_id: scopePayload.companyId ?? null,
+              company_id: scopePayload.companyId,
               scope_location: scopePayload.scopeLocation ?? null,
               scope_department: scopePayload.scopeDepartment ?? null,
             },

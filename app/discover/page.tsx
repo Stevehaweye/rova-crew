@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { filterPublicGroupIds } from '@/lib/discovery'
 import { getTopNavUser } from '@/lib/get-topnav-user'
+import { serializeJsonLd } from '@/lib/json-ld'
 import DiscoveryClient from '../discovery-client'
 
 // ─── SEO Metadata ────────────────────────────────────────────────────────────
@@ -353,7 +354,7 @@ export default async function DiscoverPage() {
       companyName={userCompany?.name ?? null}
       stats={stats}
       isLoggedIn={!!user}
-      jsonLd={JSON.stringify(jsonLd)}
+      jsonLd={serializeJsonLd(jsonLd)}
       upcomingEvents={upcomingEventsList}
       topNavUser={user ? await getTopNavUser() : null}
     />

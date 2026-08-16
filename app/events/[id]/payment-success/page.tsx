@@ -2,7 +2,6 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getStripeServer } from '@/lib/stripe'
-import Link from 'next/link'
 import PaymentSuccessClient from './payment-success-client'
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -55,54 +54,11 @@ export default async function PaymentSuccessPage({
   const metaGuestEmail = session.metadata?.guest_email || null
   const isGuest = !metaUserId
 
-  // ── Update payment record → 'paid' ─────────────────────────────────────
-  await serviceClient
-    .from('payments')
-    .update({
-      status: 'paid',
-      stripe_payment_intent_id:
-        typeof session.payment_intent === 'string'
-          ? session.payment_intent
-          : null,
-    })
-    .eq('stripe_checkout_session_id', sessionId)
-
-  // ── Upsert RSVP ────────────────────────────────────────────────────────
-  if (metaUserId) {
-    await serviceClient.from('rsvps').upsert(
-      {
-        event_id: eventId,
-        user_id: metaUserId,
-        status: 'going',
-        payment_status: 'paid',
-      },
-      { onConflict: 'event_id,user_id' }
-    )
-  } else if (metaGuestEmail) {
-    // Only insert if no existing guest RSVP for this email + event
-    const { data: existing } = await serviceClient
-      .from('guest_rsvps')
-      .select('id')
-      .eq('event_id', eventId)
-      .eq('email', metaGuestEmail)
-      .maybeSingle()
-
-    if (!existing) {
-      // Extract name from session metadata, fall back to email prefix
-      const guestName = session.metadata?.guest_name || ''
-      const nameParts = guestName.trim().split(/\s+/)
-      const firstName = nameParts[0] || metaGuestEmail.split('@')[0]
-      const lastName = nameParts.slice(1).join(' ') || 'Guest'
-
-      await serviceClient.from('guest_rsvps').insert({
-        event_id: eventId,
-        first_name: firstName,
-        last_name: lastName,
-        email: metaGuestEmail,
-        status: 'confirmed',
-      })
-    }
-  }
+  // The Stripe webhook (app/api/stripe/webhook/route.ts) is the single source
+  // of truth for flipping payments to 'paid', upserting the RSVP, and creating
+  // the guest_rsvps row. This page used to duplicate those writes, which
+  // raced with the webhook and could double-insert guest RSVPs. Now we only
+  // verify the session and render.
 
   // ── Fetch event + group details ─────────────────────────────────────────
   const { data: event } = await serviceClient

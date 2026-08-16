@@ -139,6 +139,20 @@ function AuthPageInner() {
   const [errorMsg, setErrorMsg] = useState('')
   const [company, setCompany] = useState<CompanyBranding | null>(null)
 
+  // Surface any error passed via ?error= (e.g. from the auth callback)
+  useEffect(() => {
+    const err = searchParams.get('error')
+    if (!err) return
+    const friendly =
+      err === 'timeout'
+        ? "That sign-in link took too long. Please request a new one."
+        : err === 'code_exchange_failed' || err === 'set_session_failed' || err === 'otp_verify_failed'
+          ? "That sign-in link is invalid or has expired. Please request a new one."
+          : err
+    setErrorMsg(friendly)
+    setFormState('error')
+  }, [searchParams])
+
   // Fetch company branding if ?company=slug is present
   useEffect(() => {
     const slug = searchParams.get('company')

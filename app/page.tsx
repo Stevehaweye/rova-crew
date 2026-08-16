@@ -1,7 +1,31 @@
+import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { redirect } from 'next/navigation'
 import DiscoveryClient from './discovery-client'
+
+const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://rovacrew.com'
+
+export const metadata: Metadata = {
+  title: 'ROVA Crew — Your community. Organised.',
+  description:
+    'ROVA Crew brings your activity groups, events, and community life into one beautifully organised place. Discover local crews, RSVP to events, and build real belonging.',
+  alternates: { canonical: appUrl },
+  openGraph: {
+    title: 'ROVA Crew — Your community. Organised.',
+    description:
+      'Discover local activity groups. RSVP to events. Build real belonging.',
+    url: appUrl,
+    siteName: 'ROVA Crew',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'ROVA Crew — Your community. Organised.',
+    description:
+      'Discover local activity groups. RSVP to events. Build real belonging.',
+  },
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -24,11 +48,19 @@ interface GroupRow {
 export default async function RootPage() {
   const supabase = await createClient()
 
-  // If logged in, redirect to dashboard
+  // If logged in, send to /home (which will bounce to /onboarding if needed).
   const {
     data: { user },
   } = await supabase.auth.getUser()
-  if (user) redirect('/home')
+  if (user) {
+    const svc = createServiceClient()
+    const { data: profile } = await svc
+      .from('profiles')
+      .select('onboarding_complete')
+      .eq('id', user.id)
+      .maybeSingle()
+    redirect(profile?.onboarding_complete === false ? '/onboarding' : '/home')
+  }
 
   // Parallel fetches: public groups, global stats
   const now = new Date().toISOString()

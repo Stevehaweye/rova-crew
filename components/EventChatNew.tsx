@@ -13,7 +13,7 @@ interface Props {
   eventId: string
   eventTitle: string
   eventStartsAt: string
-  eventEndsAt: string
+  eventEndsAt: string | null
   groupSlug: string
   groupColour: string
   currentUserId: string
@@ -38,10 +38,10 @@ function formatDateSeparator(date: Date): string {
   return format(date, 'EEEE d MMM')
 }
 
-function getEventPhase(startsAt: string, endsAt: string): 'pre_event' | 'event_day' | 'post_event' | 'archived' {
+function getEventPhase(startsAt: string, endsAt: string | null): 'pre_event' | 'event_day' | 'post_event' | 'archived' {
   const now = new Date()
   const start = new Date(startsAt)
-  const end = new Date(endsAt)
+  const end = new Date(endsAt ?? startsAt)
   const archiveDate = new Date(end.getTime() + 7 * 24 * 60 * 60 * 1000)
 
   if (now >= archiveDate) return 'archived'

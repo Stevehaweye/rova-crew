@@ -135,7 +135,9 @@ export async function POST(
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('[membership-fee] error:', err)
-    const message = err instanceof Error ? err.message : 'Something went wrong'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Failed to update membership fee' },
+      { status: 500 }
+    )
   }
 }

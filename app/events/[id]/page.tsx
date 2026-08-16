@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getTopNavUser } from '@/lib/get-topnav-user'
+import { serializeJsonLd } from '@/lib/json-ld'
 import EventPageClient from './event-page-client'
 import Link from 'next/link'
 import type { ChatMessage, ReactionGroup, ChatMember } from '@/components/GroupChat'
@@ -339,8 +340,9 @@ export default async function EventPage({
   let chatIsAdmin = false
   let chatMutedUntil: string | null = null
 
-  // Compute archive status: 7 days after event ends
-  const eventEndsAt = new Date(event.ends_at)
+  // Compute archive status: 7 days after event ends.
+  // Fall back to starts_at so events without an end time aren't treated as archived since 1970.
+  const eventEndsAt = new Date(event.ends_at ?? event.starts_at)
   const chatIsArchived = new Date() >= new Date(eventEndsAt.getTime() + 7 * 24 * 60 * 60 * 1000)
 
   // Check if user is RSVPd (going or maybe)
@@ -524,7 +526,7 @@ export default async function EventPage({
     <>
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
     />
     <EventPageClient
       event={{

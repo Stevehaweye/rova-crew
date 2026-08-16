@@ -2,6 +2,10 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { sendPushToUser } from '@/lib/push-sender'
 
 const MILESTONES = [5, 10, 15, 20, 25, 50]
+// Sentinel value stored in events.milestones_fired[] to indicate the "sold out"
+// notification has already been sent. Distinct from any real RSVP-count
+// milestone so it can never collide.
+const SOLD_OUT_MARKER = -1
 
 function isMilestone(count: number): boolean {
   if (MILESTONES.includes(count)) return true
@@ -23,19 +27,43 @@ export async function checkRsvpMilestone(
 
   const svc = createServiceClient()
 
+  // Read existing fired markers so we can dedupe.
   const { data: event } = await svc
     .from('events')
-    .select('title, group_id, groups ( name, slug )')
+    .select('title, group_id, milestones_fired, groups ( name, slug )')
     .eq('id', eventId)
     .single()
 
   if (!event) return
 
+  const alreadyFired = new Set<number>(event.milestones_fired ?? [])
+  const marker = justBecameFull ? SOLD_OUT_MARKER : newGoingCount
+
+  if (alreadyFired.has(marker)) return
+
+  // Reserve the marker BEFORE sending push/message so two concurrent RSVPs
+  // that both cross the same threshold can't both win.
+  const nextFired = [...alreadyFired, marker]
+  const { data: reserved, error: reserveErr } = await svc
+    .from('events')
+    .update({ milestones_fired: nextFired })
+    .eq('id', eventId)
+    .not('milestones_fired', 'cs', `{${marker}}`)
+    .select('id')
+
+  if (reserveErr) {
+    console.error('[milestone] reserve error:', reserveErr)
+    return
+  }
+  if (!reserved || reserved.length === 0) {
+    // Another concurrent call already reserved this milestone.
+    return
+  }
+
   const group = event.groups as unknown as { name: string; slug: string }
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
   const eventUrl = `${appUrl}/events/${eventId}`
 
-  // Get event_chat channel
   const { data: chatChannel } = await svc
     .from('channels')
     .select('id')
@@ -54,7 +82,6 @@ export async function checkRsvpMilestone(
     pushBody = `${newGoingCount} people are going to ${event.title}! Are you coming? →`
   }
 
-  // 1. Post system message to event_chat channel
   if (chatChannel) {
     await svc.from('messages').insert({
       channel_id: chatChannel.id,
@@ -64,7 +91,6 @@ export async function checkRsvpMilestone(
     })
   }
 
-  // 2. Push notification to group members who haven't RSVPd
   const { data: rsvps } = await svc
     .from('rsvps')
     .select('user_id')
