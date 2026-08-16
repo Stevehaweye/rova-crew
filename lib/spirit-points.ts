@@ -47,15 +47,14 @@ export async function awardSpiritPoints(
   userId: string,
   groupId: string,
   actionType: string,
-  referenceId?: string,
-  pointsOverride?: number
+  referenceId?: string
 ): Promise<AwardResult> {
   const config = ACTION_DEFAULTS[actionType]
   if (!config) {
     return { awarded: false, points: 0, totalThisWeek: 0, reason: 'unknown_action' }
   }
 
-  const points = pointsOverride ?? config.points
+  const points = config.points
   const weekStart = getWeekStart()
   const svc = createServiceClient()
 
@@ -104,23 +103,24 @@ export async function awardSpiritPoints(
     return { awarded: false, points: 0, totalThisWeek, reason: 'insert_failed' }
   }
 
-  // Update member_stats totals
+  // Update member_stats lifetime total. `spirit_points_this_month` is
+  // deliberately NOT maintained here — it is computed on read from
+  // spirit_points_log where created_at >= monthStart. That avoids relying on
+  // pg_cron for a reset (see supabase/migrations/003_monthly_board.sql).
   const { data: stats } = await svc
     .from('member_stats')
-    .select('spirit_points_total, spirit_points_this_month')
+    .select('spirit_points_total')
     .eq('user_id', userId)
     .eq('group_id', groupId)
     .maybeSingle()
 
   const currentTotal = stats?.spirit_points_total ?? 0
-  const currentMonth = stats?.spirit_points_this_month ?? 0
 
   await svc.from('member_stats').upsert(
     {
       user_id: userId,
       group_id: groupId,
       spirit_points_total: currentTotal + points,
-      spirit_points_this_month: currentMonth + points,
     },
     { onConflict: 'user_id,group_id' }
   )
@@ -132,6 +132,3 @@ export async function awardSpiritPoints(
 
   return { awarded: true, points, totalThisWeek: totalThisWeek + points }
 }
-
-// Re-export for consumers that used to import from here
-export { checkAndAwardBadges } from '@/lib/badges'

@@ -567,7 +567,7 @@ export default async function HomePage() {
   const [profileResult, membershipsResult] = await Promise.all([
     svc
       .from('profiles')
-      .select('full_name, avatar_url, company_id')
+      .select('full_name, avatar_url, company_id, onboarding_complete')
       .eq('id', user.id)
       .single(),
     svc
@@ -579,6 +579,12 @@ export default async function HomePage() {
       .eq('user_id', user.id)
       .eq('status', 'approved'),
   ])
+
+  // If the profile exists and hasn't completed onboarding, force them there.
+  // (This is server-side so it doesn't reintroduce the Safari-iOS client loop.)
+  if (profileResult.data && profileResult.data.onboarding_complete !== true) {
+    redirect('/onboarding')
+  }
 
   // Graceful fallback if profile row isn't ready yet
   const profile: Profile = profileResult.data ?? {

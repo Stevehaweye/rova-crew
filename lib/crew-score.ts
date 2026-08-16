@@ -1,14 +1,10 @@
 import { createServiceClient } from '@/lib/supabase/service'
 import { sendPushToUser } from '@/lib/push-sender'
-import { getMemberTier } from '@/lib/tier-themes'
-
-// Re-export for consumers
-export { getMemberTier, TIER_THEMES } from '@/lib/tier-themes'
-export type { TierInfo } from '@/lib/tier-themes'
+import { getMemberTier, getTierLevelByName } from '@/lib/tier-themes'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export interface CrewScoreResult {
+interface CrewScoreResult {
   crewScore: number
   loyalty: number
   spirit: number
@@ -339,8 +335,13 @@ export async function recalculateGroupCrewScores(groupId: string): Promise<void>
     await Promise.all(
       chunk.map((s) => {
         const oldStats = statsMap.get(s.userId)
+        // Derive the old level from the STORED sticky tier so a temporary
+        // crew_score dip → recovery doesn't spuriously re-fire a promotion.
+        // Fall back to the score-derived level if the stored name is missing
+        // or from a theme we don't recognise.
+        const storedLevel = getTierLevelByName(oldStats?.tier ?? null, tierTheme, customTierNames)
         const oldCrewScore = oldStats?.crew_score ?? 0
-        const oldTierLevel = getMemberTier(oldCrewScore, tierTheme, customTierNames).level
+        const oldTierLevel = storedLevel ?? getMemberTier(oldCrewScore, tierTheme, customTierNames).level
         const newTierInfo = getMemberTier(s.crewScore, tierTheme, customTierNames)
 
         // Tier can only increase, never decrease

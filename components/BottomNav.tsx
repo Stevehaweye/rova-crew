@@ -105,16 +105,18 @@ export default function BottomNav() {
   const pathname = usePathname()
   const [unreadCount, setUnreadCount] = useState(0)
 
-  // Fetch unread DM count
+  // Fetch unread DM count. Runs once on mount and subscribes to realtime
+  // message inserts so we don't re-poll on every route change (the previous
+  // implementation issued one count query per DM channel per navigation).
   useEffect(() => {
+    if (!shouldShow(pathname)) return
     let cancelled = false
     const supabase = createClient()
 
-    async function fetchUnread() {
+    async function refresh() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user || cancelled) return
 
-      // Get DM channel memberships with last_read_at
       const { data: memberships } = await supabase
         .from('channel_members')
         .select('channel_id, last_read_at, channels!inner ( type )')
@@ -125,28 +127,52 @@ export default function BottomNav() {
       )
 
       if (dmMemberships.length === 0) {
-        setUnreadCount(0)
+        if (!cancelled) setUnreadCount(0)
         return
       }
 
-      // Check each channel for messages newer than last_read_at
-      let count = 0
+      // Batch: one query returning all newer messages across all DM channels,
+      // then count distinct channels with at least one unread.
+      const channelIds = dmMemberships.map((cm) => cm.channel_id)
+      const lastReadByChannel = new Map<string, string>()
       for (const cm of dmMemberships) {
-        const { count: msgCount } = await supabase
-          .from('messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('channel_id', cm.channel_id)
-          .gt('created_at', cm.last_read_at)
-
-        if (msgCount && msgCount > 0) count++
+        lastReadByChannel.set(cm.channel_id, cm.last_read_at ?? '1970-01-01')
       }
 
-      if (!cancelled) setUnreadCount(count)
+      const oldestLastRead = Array.from(lastReadByChannel.values()).sort()[0]
+
+      const { data: recentMsgs } = await supabase
+        .from('messages')
+        .select('channel_id, created_at, sender_id')
+        .in('channel_id', channelIds)
+        .gt('created_at', oldestLastRead)
+
+      const unreadChannels = new Set<string>()
+      for (const m of recentMsgs ?? []) {
+        if (m.sender_id === user.id) continue
+        const lr = lastReadByChannel.get(m.channel_id) ?? '1970-01-01'
+        if (m.created_at > lr) unreadChannels.add(m.channel_id)
+      }
+
+      if (!cancelled) setUnreadCount(unreadChannels.size)
     }
 
-    fetchUnread()
+    refresh()
 
-    return () => { cancelled = true }
+    // Refresh on new messages in any of the user's DM channels.
+    const channel = supabase
+      .channel('bottom-nav-unread')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        () => { refresh() }
+      )
+      .subscribe()
+
+    return () => {
+      cancelled = true
+      supabase.removeChannel(channel)
+    }
   }, [pathname])
 
   if (!shouldShow(pathname)) return null

@@ -45,7 +45,7 @@ export async function getMonthlyBoardData(
   const monthStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`
 
   // Parallel fetch
-  const [eventsResult, membersResult, statsResult, groupResult] = await Promise.all([
+  const [eventsResult, membersResult, statsResult, groupResult, spiritLogResult] = await Promise.all([
     svc
       .from('events')
       .select('id, starts_at')
@@ -59,14 +59,30 @@ export async function getMonthlyBoardData(
       .eq('status', 'approved'),
     svc
       .from('member_stats')
-      .select('user_id, crew_score, tier, spirit_points_this_month, hide_from_monthly_board')
+      .select('user_id, crew_score, tier, hide_from_monthly_board')
       .eq('group_id', groupId),
     svc
       .from('groups')
       .select('tier_theme, custom_tier_names')
       .eq('id', groupId)
       .single(),
+    // Compute spirit-points-this-month from log so we don't rely on a
+    // monthly reset job (see supabase/migrations/003_monthly_board.sql).
+    svc
+      .from('spirit_points_log')
+      .select('user_id, points')
+      .eq('group_id', groupId)
+      .gte('created_at', monthStart.toISOString())
+      .lt('created_at', monthEnd.toISOString()),
   ])
+
+  const spiritThisMonthByUser = new Map<string, number>()
+  for (const row of spiritLogResult.data ?? []) {
+    spiritThisMonthByUser.set(
+      row.user_id,
+      (spiritThisMonthByUser.get(row.user_id) ?? 0) + row.points
+    )
+  }
 
   const events = eventsResult.data ?? []
   const members = membersResult.data ?? []
@@ -169,7 +185,7 @@ export async function getMonthlyBoardData(
       attendanceRate: Math.round((eventsAttended / eventsAvailable) * 100),
       eventsAttended,
       eventsAvailable,
-      spiritPointsThisMonth: memberStats?.spirit_points_this_month ?? 0,
+      spiritPointsThisMonth: spiritThisMonthByUser.get(m.user_id) ?? 0,
     })
   }
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 
 export async function GET(request: NextRequest) {
@@ -7,7 +8,23 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ groups: [] })
   }
 
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const svc = createServiceClient()
+
+  const { data: profile } = await svc
+    .from('profiles')
+    .select('company_id')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  if (!profile?.company_id || profile.company_id !== companyId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   // Fetch group IDs scoped to this company (all scope types except invitation)
   const { data: scopeRows } = await svc

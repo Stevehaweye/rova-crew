@@ -103,7 +103,7 @@ export async function getMyStatsData(
     calculateMemberCrewScore(userId, groupId),
     svc
       .from('member_stats')
-      .select('events_attended, events_available, attendance_rate, current_streak, best_streak, spirit_points_total, spirit_points_this_month, messages_sent, reactions_given, guest_converts')
+      .select('events_attended, events_available, attendance_rate, current_streak, best_streak, spirit_points_total, messages_sent, reactions_given, guest_converts')
       .eq('user_id', userId)
       .eq('group_id', groupId)
       .maybeSingle(),
@@ -216,15 +216,15 @@ export async function getMyStatsData(
   const boardRank = boardEntry?.rank ?? null
   const boardTotal = boardResult.totalQualifyingMembers
   const groupAvgRate = Math.round(boardResult.groupAvgRate)
-  const spiritPointsThisMonth = stats?.spirit_points_this_month ?? 0
-
-  // Spirit breakdown
+  // Spirit breakdown + this-month total (computed from log, not member_stats).
   const spiritMap = new Map<string, number>()
+  let spiritPointsThisMonth = 0
   for (const row of spiritLogResult.data ?? []) {
     spiritMap.set(
       row.action_type,
       (spiritMap.get(row.action_type) ?? 0) + row.points
     )
+    spiritPointsThisMonth += row.points
   }
   const spiritBreakdown: SpiritBreakdown[] = Array.from(spiritMap.entries())
     .map(([actionType, points]) => ({

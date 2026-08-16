@@ -44,12 +44,44 @@ export async function POST(request: NextRequest) {
   // ── Fetch event with group info ───────────────────────────────────────────
   const { data: event } = await serviceClient
     .from('events')
-    .select('id, title, price_pence, payment_type, group_id, groups ( name )')
+    .select('id, title, price_pence, payment_type, group_id, max_capacity, groups ( name )')
     .eq('id', event_id)
     .single()
 
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 })
+  }
+
+  // ── Capacity check ────────────────────────────────────────────────────────
+  // Best-effort: count current going + paid-pending. Still a TOCTOU race with
+  // concurrent checkouts — a fully atomic guarantee needs a DB RPC / row lock.
+  if (event.max_capacity && event.max_capacity > 0) {
+    const [{ count: goingCount }, { count: guestCount }, { count: pendingPaid }] =
+      await Promise.all([
+        serviceClient
+          .from('rsvps')
+          .select('id', { count: 'exact', head: true })
+          .eq('event_id', event_id)
+          .eq('status', 'going'),
+        serviceClient
+          .from('guest_rsvps')
+          .select('id', { count: 'exact', head: true })
+          .eq('event_id', event_id)
+          .eq('status', 'confirmed'),
+        serviceClient
+          .from('payments')
+          .select('id', { count: 'exact', head: true })
+          .eq('event_id', event_id)
+          .eq('status', 'pending'),
+      ])
+
+    const taken = (goingCount ?? 0) + (guestCount ?? 0) + (pendingPaid ?? 0)
+    if (taken >= event.max_capacity) {
+      return NextResponse.json(
+        { error: 'This event is sold out.' },
+        { status: 409 }
+      )
+    }
   }
 
   // Enterprise scope check
@@ -108,11 +140,14 @@ export async function POST(request: NextRequest) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
   const group = event.groups as unknown as { name: string }
 
-  try {
-    const stripe = getStripeServer()
+  const stripe = getStripeServer()
 
-    // Direct charge on connected account — organiser bears all fees
-    const session = await stripe.checkout.sessions.create(
+  // Create the Stripe session first so we can key the local row by session.id.
+  // If the DB insert fails afterwards, expire the session to avoid an orphan
+  // that could still be paid.
+  let session: Awaited<ReturnType<typeof stripe.checkout.sessions.create>>
+  try {
+    session = await stripe.checkout.sessions.create(
       {
         mode: 'payment',
         line_items: [
@@ -146,28 +181,42 @@ export async function POST(request: NextRequest) {
       },
       { stripeAccount: connectedAccountId }
     )
-
-    // ── Create pending payment record ─────────────────────────────────────
-    await serviceClient.from('payments').insert({
-      group_id: event.group_id,
-      event_id,
-      user_id: verifiedUserId,
-      guest_email: guest_email ?? null,
-      stripe_checkout_session_id: session.id,
-      stripe_connected_account_id: connectedAccountId,
-      amount_pence: amountPence,
-      platform_fee_pence: platformFeePence,
-      currency: 'gbp',
-      status: 'pending',
-      payment_type: 'event_ticket',
-    })
-
-    return NextResponse.json({ url: session.url })
   } catch (err) {
-    console.error('[stripe/checkout] error:', err)
+    console.error('[stripe/checkout] session create error:', err)
     return NextResponse.json(
       { error: 'Failed to create checkout session' },
       { status: 500 }
     )
   }
+
+  const { error: insertErr } = await serviceClient.from('payments').insert({
+    group_id: event.group_id,
+    event_id,
+    user_id: verifiedUserId,
+    guest_email: guest_email ?? null,
+    stripe_checkout_session_id: session.id,
+    stripe_connected_account_id: connectedAccountId,
+    amount_pence: amountPence,
+    platform_fee_pence: platformFeePence,
+    currency: 'gbp',
+    status: 'pending',
+    payment_type: 'event_ticket',
+  })
+
+  if (insertErr) {
+    console.error('[stripe/checkout] payments insert failed, expiring session:', insertErr)
+    try {
+      await stripe.checkout.sessions.expire(session.id, {
+        stripeAccount: connectedAccountId,
+      })
+    } catch (expireErr) {
+      console.error('[stripe/checkout] failed to expire orphan session:', expireErr)
+    }
+    return NextResponse.json(
+      { error: 'Failed to create checkout session' },
+      { status: 500 }
+    )
+  }
+
+  return NextResponse.json({ url: session.url })
 }

@@ -15,15 +15,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { groupId, channelId, content, imageUrl, sendPush } = body as {
-      groupId: string
+    const { channelId, content, imageUrl, sendPush } = body as {
       channelId: string
       content: string
       imageUrl?: string
       sendPush?: boolean
     }
 
-    if (!groupId || !channelId || !content?.trim()) {
+    if (!channelId || !content?.trim()) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
@@ -32,6 +31,20 @@ export async function POST(request: NextRequest) {
     }
 
     const serviceClient = createServiceClient()
+
+    // Derive groupId from the channel so the caller cannot post an announcement
+    // into a channel that belongs to a different group.
+    const { data: channel } = await serviceClient
+      .from('channels')
+      .select('group_id')
+      .eq('id', channelId)
+      .maybeSingle()
+
+    if (!channel?.group_id) {
+      return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
+    }
+
+    const groupId = channel.group_id
 
     // Verify user is admin of this group
     const { data: membership } = await serviceClient

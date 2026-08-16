@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-const PROTECTED_ROUTES = ['/home', '/profile']
+const PROTECTED_ROUTES = ['/home', '/profile', '/onboarding']
 
 function isProtected(pathname: string): boolean {
   if (PROTECTED_ROUTES.some((route) => pathname.startsWith(route))) return true
@@ -10,7 +10,18 @@ function isProtected(pathname: string): boolean {
   return false
 }
 
+const AUTH_PASSTHROUGH = /^\/auth\/(callback|redirect)(\/|$)/
+
 export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname
+
+  // Short-circuit: paths that never need session inspection. Avoids running
+  // getUser() on every /api/* and /auth callback route, which was a per-request
+  // Supabase Auth round-trip that added latency and could race cookie refresh.
+  if (pathname.startsWith('/api') || AUTH_PASSTHROUGH.test(pathname)) {
+    return NextResponse.next({ request })
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -72,6 +83,6 @@ export const config = {
      *  - favicon.ico
      *  - common image extensions
      */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|manifest.json|sw.js|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|woff|woff2|ico|map)$).*)',
   ],
 }

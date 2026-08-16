@@ -15,15 +15,14 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { channelId, groupId, content, imageUrl, replyToId } = body as {
+    const { channelId, content, imageUrl, replyToId } = body as {
       channelId: string
-      groupId: string
       content: string
       imageUrl?: string
       replyToId?: string
     }
 
-    if (!channelId || !groupId || !content?.trim()) {
+    if (!channelId || !content?.trim()) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
@@ -32,6 +31,20 @@ export async function POST(request: NextRequest) {
     }
 
     const serviceClient = createServiceClient()
+
+    // Derive groupId from the channel server-side so a caller cannot post into a
+    // channel they don't belong to by supplying a mismatched groupId.
+    const { data: channel } = await serviceClient
+      .from('channels')
+      .select('group_id')
+      .eq('id', channelId)
+      .maybeSingle()
+
+    if (!channel?.group_id) {
+      return NextResponse.json({ error: 'Channel not found' }, { status: 404 })
+    }
+
+    const groupId = channel.group_id
 
     // Verify approved member
     const { data: membership } = await serviceClient

@@ -33,7 +33,9 @@ export async function POST() {
     return NextResponse.json({ url: loginLink.url })
   } catch (err) {
     console.error('[stripe/dashboard-link] error:', err)
-    const message = err instanceof Error ? err.message : 'Something went wrong'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Failed to open Stripe dashboard' },
+      { status: 500 }
+    )
   }
 }

@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getHallOfFameRecords, type HallOfFameRecord } from '@/lib/hall-of-fame'
 import { getTopNavUser } from '@/lib/get-topnav-user'
+import { serializeJsonLd } from '@/lib/json-ld'
 import UserMenu from '@/components/UserMenu'
 import type { TopNavUser } from '@/components/TopNav'
 import { JoinCard } from './join-button'
@@ -824,7 +825,7 @@ export default async function GroupPage({
     <div className="min-h-screen bg-gray-50 pb-24">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
 
       {/* Hero */}

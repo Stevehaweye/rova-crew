@@ -42,7 +42,7 @@ export async function POST(
     // Fetch event to verify it exists and check archive status
     const { data: event } = await serviceClient
       .from('events')
-      .select('id, title, ends_at, group_id')
+      .select('id, title, starts_at, ends_at, group_id')
       .eq('id', eventId)
       .single()
 
@@ -50,8 +50,22 @@ export async function POST(
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
 
-    // Check archive status (7 days after event ends)
-    const endsAt = new Date(event.ends_at)
+    // Verify channelId actually belongs to this event so a caller cannot post
+    // into an unrelated channel by supplying its id.
+    const { data: channel } = await serviceClient
+      .from('channels')
+      .select('event_id')
+      .eq('id', channelId)
+      .maybeSingle()
+
+    if (!channel || channel.event_id !== eventId) {
+      return NextResponse.json({ error: 'Channel does not belong to this event' }, { status: 403 })
+    }
+
+    // Check archive status (7 days after event ends).
+    // Fall back to starts_at when ends_at is null so events without an end time
+    // aren't treated as archived since 1970-01-08.
+    const endsAt = new Date(event.ends_at ?? event.starts_at)
     const archiveDate = new Date(endsAt.getTime() + 7 * 24 * 60 * 60 * 1000)
     if (new Date() >= archiveDate) {
       return NextResponse.json({ error: 'This chat is archived' }, { status: 403 })
@@ -104,7 +118,7 @@ export async function POST(
     }
 
     // Award spirit points for event chat post (fire-and-forget)
-    awardSpiritPoints('event_chat_post', user.id, event.group_id).catch(() => {})
+    awardSpiritPoints(user.id, event.group_id, 'event_chat_post').catch(() => {})
 
     // Push notification: send to RSVPd users whose last_read_at is >30 min ago
     const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString()
