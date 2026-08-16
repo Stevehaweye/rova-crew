@@ -61,6 +61,8 @@ export interface AdminData {
   appUrl: string
   upcomingEvents: UpcomingEvent[]
   stripeConnected: boolean
+  viewerHasLiveStripe: boolean
+  viewerUserId: string
   monthlyRevenuePence: number
   healthData: HealthScoreData | null
 }
@@ -800,12 +802,40 @@ export default function AdminShell({
   appUrl,
   upcomingEvents,
   stripeConnected,
+  viewerHasLiveStripe,
+  viewerUserId,
   monthlyRevenuePence,
   healthData,
 }: AdminData) {
+  const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [shareModalOpen, setShareModalOpen] = useState(false)
   const [healthExpanded, setHealthExpanded] = useState(false)
+  const [enablingPayments, setEnablingPayments] = useState(false)
+  const [enablePaymentsError, setEnablePaymentsError] = useState<string | null>(null)
+
+  async function handleEnablePayments() {
+    setEnablingPayments(true)
+    setEnablePaymentsError(null)
+    try {
+      const res = await fetch(`/api/groups/${group.slug}/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payments_enabled: true,
+          payment_admin_id: viewerUserId,
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error ?? 'Could not enable payments')
+      }
+      router.refresh()
+    } catch (err) {
+      setEnablePaymentsError(err instanceof Error ? err.message : 'Could not enable payments')
+      setEnablingPayments(false)
+    }
+  }
 
   const colour = hex(group.primary_colour)
   const groupUrl = `${appUrl}/g/${group.slug}`
@@ -888,7 +918,36 @@ export default function AdminShell({
             </div>
 
             {/* ── Stripe CTA Banner ────────────────────────────────── */}
-            {!stripeConnected && (
+            {!stripeConnected && viewerHasLiveStripe && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-amber-900">Your Stripe is live — enable payments for this group?</p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      Payouts will go to your connected Stripe account. You can change this in settings later.
+                    </p>
+                    {enablePaymentsError && (
+                      <p className="text-xs text-red-700 mt-1 font-medium">{enablePaymentsError}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleEnablePayments}
+                    disabled={enablingPayments}
+                    className="flex-shrink-0 px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {enablingPayments ? 'Enabling…' : 'Enable payments'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!stripeConnected && !viewerHasLiveStripe && (
               <Link
                 href={`/g/${group.slug}/admin/settings`}
                 className="flex items-center gap-4 rounded-2xl border border-purple-200 bg-purple-50 p-4 hover:bg-purple-100 transition-colors"
