@@ -151,22 +151,43 @@ export default async function AdminPage({
     }
   }
 
-  // ── Check Stripe Connect status (user-level) ────────────────────────────────
+  // ── Check Stripe Connect status ─────────────────────────────────────────────
+  // Two independent things:
+  //   1. `stripeConnected` — is this GROUP wired up to accept payments?
+  //   2. `viewerHasLiveStripe` — does this ADMIN personally have a live Stripe
+  //      account? If yes and (1) is false, we can offer a one-click enable.
   const svcAdmin = createServiceClient()
-  const { data: groupPaymentInfo } = await svcAdmin
-    .from('groups')
-    .select('payments_enabled, payment_admin_id')
-    .eq('id', group.id)
-    .single()
+  const [groupPaymentRes, viewerStripeRes] = await Promise.all([
+    svcAdmin
+      .from('groups')
+      .select('payments_enabled, payment_admin_id')
+      .eq('id', group.id)
+      .single(),
+    svcAdmin
+      .from('stripe_accounts')
+      .select('charges_enabled, onboarding_complete')
+      .eq('user_id', user.id)
+      .maybeSingle(),
+  ])
+
+  const groupPaymentInfo = groupPaymentRes.data
+  const viewerHasLiveStripe =
+    viewerStripeRes.data?.charges_enabled === true &&
+    viewerStripeRes.data?.onboarding_complete === true
 
   let stripeConnected = false
   if (groupPaymentInfo?.payments_enabled && groupPaymentInfo?.payment_admin_id) {
-    const { data: stripeAccount } = await svcAdmin
-      .from('stripe_accounts')
-      .select('charges_enabled')
-      .eq('user_id', groupPaymentInfo.payment_admin_id)
-      .maybeSingle()
-    stripeConnected = stripeAccount?.charges_enabled === true
+    if (groupPaymentInfo.payment_admin_id === user.id) {
+      // Skip the extra fetch — we already know from viewerStripeRes.
+      stripeConnected = viewerHasLiveStripe
+    } else {
+      const { data: stripeAccount } = await svcAdmin
+        .from('stripe_accounts')
+        .select('charges_enabled')
+        .eq('user_id', groupPaymentInfo.payment_admin_id)
+        .maybeSingle()
+      stripeConnected = stripeAccount?.charges_enabled === true
+    }
   }
 
   // ── Monthly revenue ────────────────────────────────────────────────────────
@@ -196,6 +217,8 @@ export default async function AdminPage({
       recentMembers={recentMembers}
       appUrl={appUrl}
       stripeConnected={stripeConnected}
+      viewerHasLiveStripe={viewerHasLiveStripe}
+      viewerUserId={user.id}
       monthlyRevenuePence={monthlyRevenuePence}
       healthData={healthData}
       upcomingEvents={upcomingEvents.map((e) => ({
