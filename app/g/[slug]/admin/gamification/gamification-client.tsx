@@ -51,6 +51,7 @@ const THEME_LABELS: Record<string, string> = {
   knitting: 'Knitting',
   yoga: 'Yoga',
   football: 'Football',
+  padel: 'Padel',
   social: 'Social',
   volunteering: 'Volunteering',
   photography: 'Photography',
