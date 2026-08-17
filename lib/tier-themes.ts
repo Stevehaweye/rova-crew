@@ -17,6 +17,7 @@ export const TIER_THEMES: Record<string, [string, string, string, string, string
   knitting:      ['Caster-on',  'Stitcher',   'Knitter',      'Artisan',    'Master'],
   yoga:          ['Beginner',   'Student',    'Practitioner',  'Yogi',      'Guru'],
   football:      ['Sub',        'Starter',    'Playmaker',    'Captain',    'Legend'],
+  padel:         ['Beginner',   'Rally',      'Volley',       'Smash',      'Champion'],
   social:        ['Newbie',     'Regular',    'Connector',    'Influencer', 'Icon'],
   volunteering:  ['Helper',     'Supporter',  'Champion',     'Leader',     'Hero'],
   photography:   ['Snapper',    'Shooter',    'Photographer', 'Artist',     'Visionary'],

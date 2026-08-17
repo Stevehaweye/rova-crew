@@ -26,6 +26,7 @@ const CATEGORIES = [
   { label: 'Walking', emoji: '🥾' },
   { label: 'Yoga', emoji: '🧘' },
   { label: 'Football', emoji: '⚽' },
+  { label: 'Padel', emoji: '🎾' },
   { label: 'Book Club', emoji: '📚' },
   { label: 'Social', emoji: '🍽️' },
   { label: 'Photography', emoji: '📷' },
