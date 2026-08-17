@@ -14,6 +14,33 @@ const FORMAT_DIMENSIONS: Record<string, { width: number; height: number }> = {
   print: { width: 2480, height: 3508 },
 }
 
+// Bump when the flyer template changes so old cached PNGs get regenerated.
+const TEMPLATE_VERSION = 2
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function normaliseHex(raw: string | null | undefined): string {
+  if (!raw) return '#0D7377'
+  return raw.startsWith('#') ? raw : `#${raw}`
+}
+
+/** Perceived luminance (0–1). >0.6 = "light" for our purposes. */
+function luminance(hex: string): number {
+  const h = hex.replace('#', '')
+  if (h.length !== 6) return 0.3
+  const r = parseInt(h.slice(0, 2), 16) / 255
+  const g = parseInt(h.slice(2, 4), 16) / 255
+  const b = parseInt(h.slice(4, 6), 16) / 255
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+/** Truncate a description to something readable on a flyer. */
+function truncate(text: string, max: number): string {
+  const trimmed = text.trim()
+  if (trimmed.length <= max) return trimmed
+  return trimmed.slice(0, max - 1).trimEnd() + '…'
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -33,8 +60,7 @@ export async function GET(
 
     const svc = createServiceClient()
 
-    // Check if flyer already exists in storage
-    const storagePath = `flyers/${eventId}-${fmt}.png`
+    const storagePath = `flyers/${eventId}-${fmt}-v${TEMPLATE_VERSION}.png`
     const { data: existing } = await svc.storage
       .from('group-logos')
       .createSignedUrl(storagePath, 7 * 24 * 60 * 60)
@@ -43,11 +69,10 @@ export async function GET(
       return NextResponse.json({ url: existing.signedUrl })
     }
 
-    // Fetch event + group
     const { data: event } = await svc
       .from('events')
       .select(
-        'id, title, starts_at, ends_at, location, cover_url, group_id, groups ( name, slug, logo_url, primary_colour )'
+        'id, title, description, starts_at, ends_at, location, cover_url, group_id, groups ( name, slug, logo_url, primary_colour )'
       )
       .eq('id', eventId)
       .single()
@@ -56,7 +81,6 @@ export async function GET(
       return NextResponse.json({ error: 'Event not found' }, { status: 404 })
     }
 
-    // Enterprise scope check
     const hasAccess = await canAccessGroup(event.group_id, user.id)
     if (!hasAccess) {
       return NextResponse.json({ error: 'You do not have access to this event.' }, { status: 403 })
@@ -69,9 +93,14 @@ export async function GET(
       primary_colour: string
     }
 
-    const colour = group.primary_colour.startsWith('#')
-      ? group.primary_colour
-      : `#${group.primary_colour}`
+    const brand = normaliseHex(group.primary_colour)
+    // Guarantee readable contrast: the content panel is always dark so the
+    // white event text stays legible regardless of the group's brand colour.
+    // The brand colour is used as an accent — top strip, date pill, tint on
+    // the panel — never as the base background.
+    const brandIsLight = luminance(brand) > 0.55
+    const panelBg = '#0F172A' // slate-900 — high-contrast base for white text
+    const accent = brandIsLight ? '#111827' : brand // avoid pale-on-white
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
     const eventUrl = `${appUrl}/events/${eventId}`
@@ -80,25 +109,40 @@ export async function GET(
 
     const dateStr = format(startDate, 'EEEE d MMMM yyyy')
     const timeStr = `${format(startDate, 'h:mm a')} – ${format(endDate, 'h:mm a')}`
+    const description = typeof event.description === 'string' ? truncate(event.description, 220) : null
 
-    // Generate QR code data URL
+    // Scale every size by the canvas width so print (2480px) is legible.
+    const scale = dims.width / 1080
+    const px = (base: number) => Math.round(base * scale)
+
+    // Layout sizes (base = 1080-wide canvas).
+    const brandStripHeight = px(14)
+    const headerPadX = px(56)
+    const headerPadY = px(40)
+    const headerLogoSize = px(96)
+    const headerNameSize = px(38)
+    const coverHeight = Math.round(dims.height * (fmt === 'stories' ? 0.42 : 0.44))
+    const contentPad = px(64)
+    const titleSize = fmt === 'print' ? px(80) : px(68)
+    const datePillPadX = px(28)
+    const datePillPadY = px(14)
+    const dateSize = px(30)
+    const timeSize = px(26)
+    const locationSize = px(30)
+    const descriptionSize = px(24)
+    const qrSize = px(240)
+    const qrLabelSize = px(24)
+    const qrUrlSize = px(20)
+
     const qrDataUrl = await QRCode.toDataURL(eventUrl, {
-      width: 280,
+      width: qrSize,
       margin: 2,
-      color: { dark: '#111827', light: '#FFFFFF' },
+      color: { dark: '#0F172A', light: '#FFFFFF' },
       errorCorrectionLevel: 'M',
     })
 
-    // Layout scale factors based on format
-    const scale = dims.width / 1080
-    const coverHeight = fmt === 'square' ? Math.round(dims.height * 0.35) : fmt === 'print' ? Math.round(dims.height * 0.35) : 768
-    const titleSize = Math.round(56 * scale)
-    const dateSize = Math.round(28 * scale)
-    const timeSize = Math.round(24 * scale)
-    const qrSize = Math.round(200 * scale)
-    const padding = Math.round(60 * scale)
+    const displayUrl = eventUrl.replace(/^https?:\/\//, '')
 
-    // Build flyer
     const imageResponse = new ImageResponse(
       (
         <div
@@ -108,253 +152,241 @@ export async function GET(
             display: 'flex',
             flexDirection: 'column',
             fontFamily: 'sans-serif',
-            position: 'relative',
+            backgroundColor: panelBg,
           }}
         >
-          {/* Background gradient */}
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: `linear-gradient(160deg, ${colour}ee, ${colour}cc, ${colour}88)`,
-              display: 'flex',
-            }}
-          />
+          {/* Brand strip */}
+          <div style={{ height: brandStripHeight, width: '100%', backgroundColor: accent, display: 'flex' }} />
 
-          {/* Top: Group identity */}
+          {/* Header: logo + group name */}
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 20,
-              padding: `${padding}px ${padding}px ${Math.round(padding * 0.67)}px`,
-              position: 'relative',
-              zIndex: 2,
+              gap: px(24),
+              padding: `${headerPadY}px ${headerPadX}px`,
             }}
           >
             {group.logo_url ? (
               <img
                 src={group.logo_url}
                 style={{
-                  width: 64,
-                  height: 64,
-                  borderRadius: 14,
-                  border: '3px solid rgba(255,255,255,0.3)',
+                  width: headerLogoSize,
+                  height: headerLogoSize,
+                  borderRadius: px(20),
+                  border: `${px(4)}px solid rgba(255,255,255,0.35)`,
                 }}
               />
             ) : (
               <div
                 style={{
-                  width: 64,
-                  height: 64,
-                  borderRadius: 14,
-                  backgroundColor: 'rgba(255,255,255,0.2)',
+                  width: headerLogoSize,
+                  height: headerLogoSize,
+                  borderRadius: px(20),
+                  backgroundColor: accent,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   color: 'white',
-                  fontSize: 24,
-                  fontWeight: 700,
+                  fontSize: px(40),
+                  fontWeight: 800,
                 }}
               >
                 {group.name.slice(0, 2).toUpperCase()}
               </div>
             )}
-            <div
-              style={{
-                fontSize: 28,
-                fontWeight: 700,
-                color: 'rgba(255,255,255,0.9)',
-                display: 'flex',
-              }}
-            >
-              {group.name}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div
+                style={{
+                  fontSize: headerNameSize,
+                  fontWeight: 800,
+                  color: 'white',
+                  letterSpacing: -0.5,
+                  display: 'flex',
+                }}
+              >
+                {group.name}
+              </div>
+              <div
+                style={{
+                  fontSize: px(20),
+                  color: 'rgba(255,255,255,0.55)',
+                  marginTop: px(4),
+                  letterSpacing: 1.5,
+                  textTransform: 'uppercase',
+                  display: 'flex',
+                }}
+              >
+                You&apos;re invited
+              </div>
             </div>
           </div>
 
-          {/* Middle: Cover photo area */}
-          <div
-            style={{
-              height: coverHeight,
-              width: '100%',
-              display: 'flex',
-              position: 'relative',
-              overflow: 'hidden',
-            }}
-          >
+          {/* Cover photo */}
+          <div style={{ height: coverHeight, width: '100%', display: 'flex', position: 'relative', overflow: 'hidden' }}>
             {event.cover_url ? (
               <img
                 src={event.cover_url}
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  position: 'absolute',
-                }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute' }}
               />
-            ) : null}
-            {/* Gradient overlay */}
+            ) : (
+              <div style={{ width: '100%', height: '100%', backgroundColor: accent, display: 'flex' }} />
+            )}
+            {/* Bottom fade so title anchors on top of image */}
             <div
               style={{
                 position: 'absolute',
                 inset: 0,
-                background: event.cover_url
-                  ? 'linear-gradient(to bottom, transparent 30%, rgba(0,0,0,0.7))'
-                  : `linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(0,0,0,0.15) 100%)`,
+                background: 'linear-gradient(to bottom, transparent 55%, rgba(15,23,42,0.95))',
                 display: 'flex',
               }}
             />
-            {/* Pattern if no cover */}
-            {!event.cover_url && (
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  opacity: 0.12,
-                  backgroundImage:
-                    'radial-gradient(rgba(255,255,255,0.8) 1px, transparent 1px)',
-                  backgroundSize: '28px 28px',
-                  display: 'flex',
-                }}
-              />
-            )}
           </div>
 
-          {/* Center: Event details */}
+          {/* Content panel */}
           <div
             style={{
               flex: 1,
               display: 'flex',
               flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: `${Math.round(padding * 0.67)}px ${padding}px`,
-              position: 'relative',
-              zIndex: 1,
+              padding: `${contentPad}px ${contentPad}px ${px(48)}px`,
             }}
           >
-            {/* Event title */}
+            {/* Title */}
             <div
               style={{
                 fontSize: titleSize,
-                fontWeight: 700,
+                fontWeight: 900,
                 color: 'white',
-                textAlign: 'center',
-                lineHeight: 1.15,
-                marginBottom: 24,
-                textShadow: '0 2px 12px rgba(0,0,0,0.3)',
-                maxWidth: 960,
+                lineHeight: 1.05,
+                letterSpacing: -1,
                 display: 'flex',
               }}
             >
               {event.title}
             </div>
 
-            {/* Date */}
+            {/* Date pill + time */}
             <div
               style={{
-                fontSize: dateSize,
-                fontWeight: 600,
-                color: 'rgba(255,255,255,0.9)',
-                textAlign: 'center',
-                marginBottom: 8,
                 display: 'flex',
+                alignItems: 'center',
+                gap: px(20),
+                marginTop: px(36),
+                flexWrap: 'wrap',
               }}
             >
-              {dateStr}
-            </div>
-
-            {/* Time */}
-            <div
-              style={{
-                fontSize: timeSize,
-                color: 'rgba(255,255,255,0.75)',
-                textAlign: 'center',
-                marginBottom: 16,
-                display: 'flex',
-              }}
-            >
-              {timeStr}
+              <div
+                style={{
+                  backgroundColor: accent,
+                  padding: `${datePillPadY}px ${datePillPadX}px`,
+                  borderRadius: px(999),
+                  fontSize: dateSize,
+                  fontWeight: 700,
+                  color: 'white',
+                  display: 'flex',
+                }}
+              >
+                {dateStr}
+              </div>
+              <div
+                style={{
+                  fontSize: timeSize,
+                  color: 'rgba(255,255,255,0.85)',
+                  fontWeight: 600,
+                  display: 'flex',
+                }}
+              >
+                {timeStr}
+              </div>
             </div>
 
             {/* Location */}
             {event.location && (
               <div
                 style={{
-                  fontSize: 22,
-                  color: 'rgba(255,255,255,0.7)',
-                  textAlign: 'center',
+                  fontSize: locationSize,
+                  color: 'white',
+                  fontWeight: 600,
+                  marginTop: px(24),
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 8,
+                  gap: px(10),
                 }}
               >
-                📍 {event.location}
+                <span style={{ display: 'flex' }}>📍</span>
+                <span style={{ display: 'flex' }}>{event.location}</span>
               </div>
             )}
-          </div>
 
-          {/* Bottom: QR code */}
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              paddingBottom: 80,
-              position: 'relative',
-              zIndex: 1,
-            }}
-          >
+            {/* Description */}
+            {description && (
+              <div
+                style={{
+                  fontSize: descriptionSize,
+                  color: 'rgba(255,255,255,0.75)',
+                  lineHeight: 1.45,
+                  marginTop: px(28),
+                  maxWidth: dims.width - contentPad * 2,
+                  display: 'flex',
+                }}
+              >
+                {description}
+              </div>
+            )}
+
+            {/* Bottom row: QR + label */}
             <div
               style={{
-                backgroundColor: 'white',
-                borderRadius: 24,
-                padding: 20,
+                marginTop: 'auto',
                 display: 'flex',
-                flexDirection: 'column',
                 alignItems: 'center',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+                gap: px(28),
               }}
             >
-              <img
-                src={qrDataUrl}
-                style={{ width: qrSize, height: qrSize }}
-              />
-            </div>
-            <div
-              style={{
-                marginTop: 16,
-                fontSize: 20,
-                fontWeight: 600,
-                color: 'rgba(255,255,255,0.7)',
-                textTransform: 'uppercase',
-                letterSpacing: 3,
-                display: 'flex',
-              }}
-            >
-              Scan to RSVP
-            </div>
-          </div>
-
-          {/* Footer watermark */}
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 24,
-              left: 0,
-              right: 0,
-              display: 'flex',
-              justifyContent: 'center',
-            }}
-          >
-            <div
-              style={{
-                fontSize: 16,
-                color: 'rgba(255,255,255,0.35)',
-                display: 'flex',
-              }}
-            >
-              rova.crew
+              <div
+                style={{
+                  backgroundColor: 'white',
+                  borderRadius: px(20),
+                  padding: px(16),
+                  display: 'flex',
+                }}
+              >
+                <img src={qrDataUrl} style={{ width: qrSize, height: qrSize }} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: px(6) }}>
+                <div
+                  style={{
+                    fontSize: qrLabelSize,
+                    color: 'white',
+                    fontWeight: 800,
+                    letterSpacing: 3,
+                    textTransform: 'uppercase',
+                    display: 'flex',
+                  }}
+                >
+                  Scan to RSVP
+                </div>
+                <div
+                  style={{
+                    fontSize: qrUrlSize,
+                    color: 'rgba(255,255,255,0.55)',
+                    display: 'flex',
+                  }}
+                >
+                  {displayUrl}
+                </div>
+                <div
+                  style={{
+                    fontSize: qrUrlSize,
+                    color: 'rgba(255,255,255,0.35)',
+                    marginTop: px(6),
+                    display: 'flex',
+                  }}
+                >
+                  rova.crew
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -365,10 +397,8 @@ export async function GET(
       }
     )
 
-    // Convert to buffer
     const imageBuffer = await imageResponse.arrayBuffer()
 
-    // Upload to Supabase Storage
     const { error: uploadErr } = await svc.storage
       .from('group-logos')
       .upload(storagePath, Buffer.from(imageBuffer), {
@@ -380,7 +410,6 @@ export async function GET(
       console.error('[flyer] upload error:', uploadErr)
     }
 
-    // Generate signed URL
     const { data: signedData } = await svc.storage
       .from('group-logos')
       .createSignedUrl(storagePath, 7 * 24 * 60 * 60)
@@ -389,7 +418,6 @@ export async function GET(
       return NextResponse.json({ url: signedData.signedUrl })
     }
 
-    // Fallback: return image directly
     return new NextResponse(Buffer.from(imageBuffer), {
       headers: { 'Content-Type': 'image/png' },
     })
