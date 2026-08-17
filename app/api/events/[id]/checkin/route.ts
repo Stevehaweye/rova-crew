@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import { awardSpiritPoints } from '@/lib/spirit-points'
 import { recalculateGroupCrewScores } from '@/lib/crew-score'
 import { updateStreakOnCheckIn } from '@/lib/streaks'
@@ -65,7 +66,7 @@ export async function POST(
     if (type === 'member' && user_id) {
       const { data: rsvp } = await supabase
         .from('rsvps')
-        .select('id, status, checked_in_at, user_id, profiles:user_id ( full_name, avatar_url )')
+        .select('id, status, checked_in_at, user_id')
         .eq('event_id', eventId)
         .eq('user_id', user_id)
         .maybeSingle()
@@ -78,8 +79,18 @@ export async function POST(
         }, { status: 404 })
       }
 
+      // Fetch profile separately — the FK path from rsvps.user_id doesn't
+      // support PostgREST's nested-select syntax on this schema, so the old
+      // `profiles:user_id(...)` inline join returned null. Use service
+      // client so RLS on profiles doesn't block the read either.
+      const svc = createServiceClient()
+      const { data: profile } = await svc
+        .from('profiles')
+        .select('full_name, avatar_url')
+        .eq('id', rsvp.user_id)
+        .maybeSingle()
+
       if (rsvp.checked_in_at) {
-        const profile = rsvp.profiles as unknown as { full_name: string; avatar_url: string | null }
         return NextResponse.json({
           success: false,
           error: 'Already checked in',
@@ -109,7 +120,6 @@ export async function POST(
 
       if (!flipped || flipped.length === 0) {
         // Another concurrent scan already checked them in.
-        const profile = rsvp.profiles as unknown as { full_name: string; avatar_url: string | null }
         return NextResponse.json({
           success: false,
           error: 'Already checked in',
@@ -140,8 +150,6 @@ export async function POST(
       // Recalculate group health score (fire-and-forget)
       calculateGroupHealthScore(event.group_id)
         .catch((err) => console.error('[checkin] health score error:', err))
-
-      const profile = rsvp.profiles as unknown as { full_name: string; avatar_url: string | null }
 
       return NextResponse.json({
         success: true,

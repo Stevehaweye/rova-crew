@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceClient } from '@/lib/supabase/service'
 import CheckinClient from './checkin-client'
 
 export default async function CheckinPage({
@@ -49,11 +50,14 @@ export default async function CheckinPage({
 
   if (!event) redirect(`/g/${slug}/admin/events`)
 
-  // Fetch all RSVPs (members + guests + plus-ones) for this event
+  // Fetch all RSVPs (members + guests + plus-ones) for this event.
+  // Profiles come from a second query — the FK path from rsvps.user_id
+  // to public.profiles isn't set up for PostgREST nested selects, so
+  // the previous inlined `profiles:user_id(...)` version returned null.
   const [memberRsvpsResult, guestRsvpsResult, plusOnesResult] = await Promise.all([
     supabase
       .from('rsvps')
-      .select('id, user_id, status, checked_in_at, profiles:user_id ( full_name, avatar_url )')
+      .select('id, user_id, status, checked_in_at')
       .eq('event_id', eventId)
       .in('status', ['going', 'maybe'])
       .order('created_at', { ascending: true }),
@@ -67,17 +71,39 @@ export default async function CheckinPage({
 
     supabase
       .from('event_plus_ones')
-      .select('id, user_id, guest_name, checked_in, profiles:user_id ( full_name )')
+      .select('id, user_id, guest_name, checked_in')
       .eq('event_id', eventId)
       .order('created_at', { ascending: true }),
   ])
+
+  // Batch-fetch profiles for every user referenced by member RSVPs or plus-one
+  // hosts. Service client bypasses RLS so we always get names + avatars.
+  const svc = createServiceClient()
+  const relevantUserIds = Array.from(new Set([
+    ...(memberRsvpsResult.data ?? []).map((r) => r.user_id),
+    ...(plusOnesResult.data ?? []).map((r) => r.user_id),
+  ].filter(Boolean) as string[]))
+
+  const profileById = new Map<string, { full_name: string; avatar_url: string | null }>()
+  if (relevantUserIds.length > 0) {
+    const { data: profileRows } = await svc
+      .from('profiles')
+      .select('id, full_name, avatar_url')
+      .in('id', relevantUserIds)
+    for (const p of profileRows ?? []) {
+      profileById.set(p.id, {
+        full_name: p.full_name ?? 'Member',
+        avatar_url: p.avatar_url ?? null,
+      })
+    }
+  }
 
   const colour = group.primary_colour.startsWith('#')
     ? group.primary_colour
     : `#${group.primary_colour}`
 
   const memberAttendees = (memberRsvpsResult.data ?? []).map((r) => {
-    const profile = r.profiles as unknown as { full_name: string; avatar_url: string | null } | null
+    const profile = profileById.get(r.user_id)
     return {
       id: r.id,
       userId: r.user_id,
@@ -104,9 +130,8 @@ export default async function CheckinPage({
   }))
 
   const plusOneAttendees = (plusOnesResult.data ?? []).map((r) => {
-    const hostProfile = r.profiles as unknown as { full_name: string } | null
-    // Find the host member attendee to nest under
     const hostMember = memberAttendees.find((m) => m.userId === r.user_id)
+    const hostProfile = r.user_id ? profileById.get(r.user_id) : null
     return {
       id: r.id,
       userId: null as string | null,
