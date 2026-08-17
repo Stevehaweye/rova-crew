@@ -186,7 +186,9 @@ export default async function DiscoverPage() {
     }
   }
 
-  // Build sorted groups
+  // Build sorted groups. `companyBadge` is always null here because
+  // enterprise-scoped groups were filtered out of the main public grid
+  // above (they only appear in the companyGroups section).
   const sortedGroups = groups
     .map((g) => ({
       id: g.id,
@@ -202,6 +204,7 @@ export default async function DiscoverPage() {
       memberCount: memberCounts[g.id] ?? 0,
       nextEventDate: nextEvents[g.id] ?? null,
       location: g.location,
+      companyBadge: null as null | { name: string; colour: string | null },
     }))
     .sort((a, b) => b.memberCount - a.memberCount)
 
@@ -259,6 +262,20 @@ export default async function DiscoverPage() {
         cCounts[r.group_id] = (cCounts[r.group_id] ?? 0) + 1
       }
 
+      // Fetch the company's brand colour so the ScopeBadge on each card
+      // can match. These groups are all scoped to userCompany, so a single
+      // lookup covers all of them.
+      const { data: companyRow } = await svc
+        .from('companies')
+        .select('primary_colour')
+        .eq('id', userCompany!.id)
+        .maybeSingle()
+
+      const companyBadge = {
+        name: userCompany!.name,
+        colour: companyRow?.primary_colour ?? null,
+      }
+
       companyGroups = cGroups.map(g => ({
         id: g.id,
         name: g.name,
@@ -273,6 +290,7 @@ export default async function DiscoverPage() {
         memberCount: cCounts[g.id] ?? 0,
         nextEventDate: nextEvents[g.id] ?? null,
         location: g.location,
+        companyBadge,
       })).sort((a, b) => b.memberCount - a.memberCount)
     }
   }

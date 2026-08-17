@@ -9,6 +9,7 @@ import TopNav from '@/components/TopNav'
 import type { TopNavUser } from '@/components/TopNav'
 import PushPermissionBanner from '@/components/PushPermissionBanner'
 import PostEventCard, { type PostEventHighlight } from '@/components/feed/PostEventCard'
+import { ScopeBadge } from '@/components/ui/ScopeBadge'
 
 export const metadata: Metadata = {
   title: 'Home | ROVA Crew',
@@ -31,6 +32,7 @@ interface Group {
   primary_colour: string
   category: string
   tagline: string | null
+  companyBadge?: { name: string; colour: string | null } | null
 }
 
 interface UpcomingEvent {
@@ -249,7 +251,17 @@ function GroupCard({ group, memberCount }: { group: Group; memberCount: number }
 
         {/* Meta */}
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-gray-900 truncate">{group.name}</h3>
+          <div className="flex items-center gap-2 min-w-0">
+            <h3 className="font-semibold text-gray-900 truncate">{group.name}</h3>
+            {group.companyBadge && (
+              <ScopeBadge
+                companyName={group.companyBadge.name}
+                companyColour={group.companyBadge.colour}
+                size="sm"
+                className="flex-shrink-0"
+              />
+            )}
+          </div>
           {group.tagline && (
             <p className="text-xs text-gray-500 mt-0.5 truncate">{group.tagline}</p>
           )}
@@ -288,6 +300,7 @@ interface CompanyGroup {
   category: string
   tagline: string | null
   memberCount: number
+  companyBadge?: { name: string; colour: string | null } | null
 }
 
 function HasGroupsContent({
@@ -603,7 +616,7 @@ export default async function HomePage() {
   if (profile.company_id) {
     const { data: company } = await svc
       .from('companies')
-      .select('slug, name')
+      .select('slug, name, primary_colour')
       .eq('id', profile.company_id)
       .maybeSingle()
 
@@ -647,15 +660,38 @@ export default async function HomePage() {
           companyGroups = cGroups.map((g) => ({
             ...g,
             memberCount: cCountMap[g.id] ?? 0,
+            companyBadge: { name: company.name, colour: company.primary_colour ?? null },
           }))
         }
       }
     }
   }
 
-  const groups: Group[] = (membershipsResult.data ?? [])
+  const rawGroups: Group[] = (membershipsResult.data ?? [])
     .map((m) => m.groups as unknown as Group)
     .filter(Boolean)
+
+  // Attach companyBadge info to any joined group that's company-scoped.
+  // Silent no-op for truly public groups.
+  const groupBadgeMap = new Map<string, { name: string; colour: string | null }>()
+  if (rawGroups.length > 0) {
+    const { data: joinedScopes } = await svc
+      .from('group_scope')
+      .select('group_id, company_id, companies ( name, primary_colour )')
+      .in('group_id', rawGroups.map((g) => g.id))
+
+    for (const row of joinedScopes ?? []) {
+      const c = row.companies as unknown as { name: string; primary_colour: string | null } | null
+      if (c?.name) {
+        groupBadgeMap.set(row.group_id, { name: c.name, colour: c.primary_colour ?? null })
+      }
+    }
+  }
+
+  const groups: Group[] = rawGroups.map((g) => ({
+    ...g,
+    companyBadge: groupBadgeMap.get(g.id) ?? null,
+  }))
 
   // Fetch member counts + upcoming events in parallel
   const groupIds = groups.map((g) => g.id)

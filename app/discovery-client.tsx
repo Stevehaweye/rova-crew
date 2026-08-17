@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { format } from 'date-fns'
 import UserMenu from '@/components/UserMenu'
 import type { TopNavUser } from '@/components/TopNav'
+import { ScopeBadge } from '@/components/ui/ScopeBadge'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,7 @@ interface GroupCard {
   memberCount: number
   nextEventDate: string | null
   location: string | null
+  companyBadge?: { name: string; colour: string | null } | null
 }
 
 interface UpcomingEvent {
@@ -314,6 +316,16 @@ function GroupCardComponent({ group }: { group: GroupCard }) {
           </div>
         )}
 
+        {/* Scope badge — only renders when the group is company-scoped */}
+        {group.companyBadge && (
+          <div className="absolute top-3 left-3">
+            <ScopeBadge
+              companyName={group.companyBadge.name}
+              companyColour={group.companyBadge.colour}
+            />
+          </div>
+        )}
+
         {/* Logo overlay */}
         <div
           className="absolute bottom-3 left-3 w-10 h-10 rounded-xl ring-2 ring-white shadow-lg flex items-center justify-center text-white font-bold text-sm overflow-hidden flex-shrink-0"
@@ -412,6 +424,15 @@ function TrendingSection({ groups }: { groups: GroupCard[] }) {
                       backgroundImage: 'radial-gradient(rgba(255,255,255,0.7) 1px, transparent 1px)',
                       backgroundSize: '16px 16px',
                     }}
+                  />
+                </div>
+              )}
+              {g.companyBadge && (
+                <div className="absolute top-2 left-2">
+                  <ScopeBadge
+                    companyName={g.companyBadge.name}
+                    companyColour={g.companyBadge.colour}
+                    size="sm"
                   />
                 </div>
               )}

@@ -6,6 +6,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { getHallOfFameRecords, type HallOfFameRecord } from '@/lib/hall-of-fame'
 import { getTopNavUser } from '@/lib/get-topnav-user'
 import { serializeJsonLd } from '@/lib/json-ld'
+import { ScopeBadge } from '@/components/ui/ScopeBadge'
 import UserMenu from '@/components/UserMenu'
 import type { TopNavUser } from '@/components/TopNav'
 import { JoinCard } from './join-button'
@@ -169,12 +170,31 @@ function PrivateGroupView({ group, colour }: { group: Group; colour: string }) {
 
 // ─── Hero section ─────────────────────────────────────────────────────────────
 
-function Hero({ group, colour, topNavUser }: { group: Group; colour: string; topNavUser: TopNavUser | null }) {
+function Hero({
+  group,
+  colour,
+  topNavUser,
+  companyBadge,
+}: {
+  group: Group
+  colour: string
+  topNavUser: TopNavUser | null
+  companyBadge: { name: string; colour: string | null } | null
+}) {
   const focalX = group.hero_focal_x ?? 50
   const focalY = group.hero_focal_y ?? 50
 
   return (
     <section className="relative h-72 sm:h-[400px] overflow-hidden">
+      {/* Corporate scope badge — top-left, above nav overlay */}
+      {companyBadge && (
+        <div className="absolute top-4 left-4 sm:top-6 sm:left-6 z-20">
+          <ScopeBadge
+            companyName={companyBadge.name}
+            companyColour={companyBadge.colour}
+          />
+        </div>
+      )}
 
       {/* Background */}
       {group.hero_url ? (
@@ -604,6 +624,23 @@ export default async function GroupPage({
 
   if (!group) return <NotFoundView />
 
+  // Determine if this group is scoped to a company so we can render a badge
+  // in the hero and elsewhere. Runs for every visitor (not just members).
+  const { data: scopeCompanyRow } = await groupSvc
+    .from('group_scope')
+    .select('company_id, companies ( name, primary_colour )')
+    .eq('group_id', group.id)
+    .maybeSingle()
+
+  const scopeCompany = scopeCompanyRow?.companies as unknown as {
+    name: string
+    primary_colour: string | null
+  } | null
+
+  const companyBadge = scopeCompany?.name
+    ? { name: scopeCompany.name, colour: scopeCompany.primary_colour ?? null }
+    : null
+
   // Get current user (may not be authenticated)
   const {
     data: { user },
@@ -829,7 +866,7 @@ export default async function GroupPage({
       />
 
       {/* Hero */}
-      <Hero group={group} colour={colour} topNavUser={topNavUser} />
+      <Hero group={group} colour={colour} topNavUser={topNavUser} companyBadge={companyBadge} />
 
       {/* Stats bar */}
       <StatsBar group={group} colour={colour} memberCount={memberCount} nextEventDate={nextEventDate} />
