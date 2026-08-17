@@ -52,6 +52,7 @@ interface EventData {
   totalCostPence: number | null
   allowGuestRsvp: boolean
   pricePence: number | null
+  mapsUrl: string | null
 }
 
 interface GroupData {
@@ -325,10 +326,23 @@ function InfoBar({
           </div>
 
           {event.location && (
-            <div className="flex items-center gap-2 text-sm text-gray-700">
-              <MapPinIcon />
-              <span>{event.location}</span>
-            </div>
+            event.mapsUrl ? (
+              <a
+                href={event.mapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Open ${event.location} in maps`}
+                className="flex items-center gap-2 text-sm text-gray-700 hover:text-teal-700 hover:underline transition-colors"
+              >
+                <MapPinIcon />
+                <span>{event.location}</span>
+              </a>
+            ) : (
+              <div className="flex items-center gap-2 text-sm text-gray-700">
+                <MapPinIcon />
+                <span>{event.location}</span>
+              </div>
+            )
           )}
 
           <div className="flex items-center gap-2 text-sm text-gray-700">
