@@ -40,41 +40,27 @@ function CallbackHandler() {
         ? `/auth/redirect?next=${encodeURIComponent(nextParam)}`
         : '/auth/redirect'
 
-      function fail(reason: string) {
-        window.location.href = `/auth?error=${encodeURIComponent(reason)}`
-      }
+      let lastError: string | null = null
 
-      // 1. PKCE flow — ?code=...
-      const code = searchParams.get('code')
-      if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code)
-        if (!error) {
+      // Try every method that can succeed here and only bail if all of them
+      // fail. `detectSessionInUrl` (enabled by default in @supabase/ssr) may
+      // have already established a session as a side effect of createClient,
+      // so we always finish with a getSession() check.
+      async function trySucceed(): Promise<boolean> {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session?.user) {
           window.location.href = redirectTarget
-          return
+          return true
         }
-        console.error('[auth-callback] exchangeCodeForSession failed:', error)
-        fail(error.message || 'code_exchange_failed')
-        return
+        return false
       }
 
-      // 2. Email OTP magic link — ?token_hash=...&type=...
-      const tokenHash = searchParams.get('token_hash')
-      const type = searchParams.get('type')
-      if (tokenHash && type) {
-        const { error } = await supabase.auth.verifyOtp({
-          token_hash: tokenHash,
-          type: type as 'magiclink' | 'signup' | 'recovery' | 'invite' | 'email' | 'email_change',
-        })
-        if (!error) {
-          window.location.href = redirectTarget
-          return
-        }
-        console.error('[auth-callback] verifyOtp failed:', error)
-        fail(error.message || 'otp_verify_failed')
-        return
-      }
+      // 0. Auto-detect may have already stored the session.
+      if (await trySucceed()) return
 
-      // 3. Implicit flow — access_token in hash fragment
+      // 1. Implicit flow — access_token in hash fragment. This is what our
+      //    client is configured for (lib/supabase/client.ts flowType='implicit')
+      //    and it works cross-device because no PKCE verifier is required.
       const hash = window.location.hash
       if (hash && hash.includes('access_token')) {
         const params = new URLSearchParams(hash.substring(1))
@@ -91,27 +77,53 @@ function CallbackHandler() {
             return
           }
           console.error('[auth-callback] setSession failed:', error)
-          fail(error.message || 'set_session_failed')
-          return
+          lastError = error.message || 'set_session_failed'
         }
       }
 
-      // 4. Fallback: session may already exist (same-device flow).
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session?.user) {
-        window.location.href = redirectTarget
-        return
+      // 2. Email OTP flow — ?token_hash=&type=
+      const tokenHash = searchParams.get('token_hash')
+      const type = searchParams.get('type')
+      if (tokenHash && type) {
+        const { error } = await supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: type as 'magiclink' | 'signup' | 'recovery' | 'invite' | 'email' | 'email_change',
+        })
+        if (!error) {
+          window.location.href = redirectTarget
+          return
+        }
+        console.error('[auth-callback] verifyOtp failed:', error)
+        lastError = error.message || 'otp_verify_failed'
       }
 
-      // 5. Last resort: wait briefly for cookies to propagate and retry.
+      // 3. PKCE flow — ?code=. Only useful when the ORIGINAL browser (with
+      //    the stored verifier) is opening the link. Cross-device magic
+      //    links will fail here with "PKCE code verifier not found" — that
+      //    is expected and we fall through so the final getSession() catches
+      //    any session that auto-detect stored.
+      const code = searchParams.get('code')
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code)
+        if (!error) {
+          window.location.href = redirectTarget
+          return
+        }
+        console.warn('[auth-callback] exchangeCodeForSession failed (expected on cross-device magic links):', error.message)
+        // Don't record this as `lastError` — the missing-verifier case is
+        // expected and we don't want to surface it if a later method works.
+      }
+
+      // 4. Final check: session may have been established as a side effect
+      //    of one of the above attempts (Supabase-js sometimes stores the
+      //    session even when it also throws), or by detectSessionInUrl.
+      if (await trySucceed()) return
+
+      // 5. Last resort: cookies may still be propagating.
       await new Promise((r) => setTimeout(r, 2000))
-      const { data: { session: retrySession } } = await supabase.auth.getSession()
-      if (retrySession?.user) {
-        window.location.href = redirectTarget
-        return
-      }
+      if (await trySucceed()) return
 
-      fail('timeout')
+      window.location.href = `/auth?error=${encodeURIComponent(lastError ?? 'timeout')}`
     }
 
     handleAuth()
