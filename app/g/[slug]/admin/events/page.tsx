@@ -14,9 +14,9 @@ interface EventRow {
   max_capacity: number | null
   cover_url: string | null
   created_at: string
-  event_type: string | null
-  price_amount: number | null
-  total_cost: number | null
+  payment_type: string | null
+  price_pence: number | null
+  total_cost_pence: number | null
 }
 
 interface PastEventStats {
@@ -71,7 +71,7 @@ export default async function AdminEventsPage({
   // Fetch events
   let eventsQuery = supabase
     .from('events')
-    .select('id, title, starts_at, ends_at, location, max_capacity, cover_url, created_at, event_type, price_amount, total_cost')
+    .select('id, title, starts_at, ends_at, location, max_capacity, cover_url, created_at, payment_type, price_pence, total_cost_pence')
     .eq('group_id', group.id)
 
   if (activeTab === 'upcoming') {
@@ -280,10 +280,10 @@ export default async function AdminEventsPage({
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-semibold text-gray-900 truncate">{ev.title}</p>
                         {(() => {
-                          const type = ev.event_type ?? 'free'
-                          if (type === 'paid') return (
+                          const type = ev.payment_type ?? 'free'
+                          if (type === 'fixed') return (
                             <span className="flex-shrink-0 text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                              £{(ev.price_amount ?? 0).toFixed(2)}
+                              £{((ev.price_pence ?? 0) / 100).toFixed(2)}
                             </span>
                           )
                           if (type === 'shared_cost') return (
