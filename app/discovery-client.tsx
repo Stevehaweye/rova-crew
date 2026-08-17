@@ -671,23 +671,28 @@ export default function DiscoveryClient({ groups, trendingGroups, recommendedGro
   const [category, setCategory] = useState('')
   const [sortBy, setSortBy] = useState<'most_active' | 'newest' | 'most_members'>('most_active')
 
-  const filtered = useMemo(() => {
+  const applyFilter = (list: GroupCard[]) => {
     const q = search.toLowerCase().trim()
-    const result = groups.filter((g) => {
+    const result = list.filter((g) => {
       if (category && g.category !== category) return false
       if (q && !g.name.toLowerCase().includes(q) && !g.tagline?.toLowerCase().includes(q) && !g.location?.toLowerCase().includes(q)) {
         return false
       }
       return true
     })
-    // Sort
     if (sortBy === 'most_members') {
       result.sort((a, b) => b.memberCount - a.memberCount)
     } else if (sortBy === 'newest') {
       result.sort((a, b) => b.memberCount - a.memberCount) // fallback — groups already sorted by created_at desc from server
     }
     return result
-  }, [groups, search, category, sortBy])
+  }
+
+  const filtered = useMemo(() => applyFilter(groups), [groups, search, category, sortBy])
+  const filteredCompanyGroups = useMemo(
+    () => applyFilter(companyGroups),
+    [companyGroups, search, category, sortBy]
+  )
 
   const hasActiveFilter = search.trim() !== '' || category !== ''
 
@@ -737,14 +742,15 @@ export default function DiscoveryClient({ groups, trendingGroups, recommendedGro
       {/* Upcoming events — only show when no active filter */}
       {!hasActiveFilter && upcomingEvents && upcomingEvents.length > 0 && <UpcomingEventsSection events={upcomingEvents} />}
 
-      {/* Company groups section */}
-      {!hasActiveFilter && companyName && companyGroups.length > 0 && (
+      {/* Company groups section — respects search/category filter so
+          Westfield cycling clubs still show up when the user picks "Cycling". */}
+      {companyName && filteredCompanyGroups.length > 0 && (
         <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12 mb-10">
           <h2 className="text-lg font-bold text-gray-900 mb-4">
             {companyName} groups
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {companyGroups.map((group) => (
+            {filteredCompanyGroups.map((group) => (
               <GroupCardComponent key={group.id} group={group} />
             ))}
           </div>
@@ -753,13 +759,14 @@ export default function DiscoveryClient({ groups, trendingGroups, recommendedGro
 
       {/* Groups grid */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
-        {!hasActiveFilter && companyName && companyGroups.length > 0 && (
+        {companyName && filteredCompanyGroups.length > 0 && (
           <h2 className="text-lg font-bold text-gray-900 mb-4">Open to everyone</h2>
         )}
         <div className="flex items-center justify-between mb-4">
           {hasActiveFilter ? (
             <p className="text-xs text-gray-400">
-              {filtered.length} group{filtered.length !== 1 ? 's' : ''} found
+              {filtered.length + filteredCompanyGroups.length} group
+              {filtered.length + filteredCompanyGroups.length !== 1 ? 's' : ''} found
             </p>
           ) : (
             <span />
@@ -775,9 +782,9 @@ export default function DiscoveryClient({ groups, trendingGroups, recommendedGro
             <option value="most_members">Most members</option>
           </select>
         </div>
-        {filtered.length === 0 ? (
+        {filtered.length === 0 && filteredCompanyGroups.length === 0 ? (
           <EmptyState isLoggedIn={isLoggedIn} onCategorySelect={(cat) => { setCategory(cat); setSearch('') }} />
-        ) : (
+        ) : filtered.length === 0 ? null : (
           <>
             {!hasActiveFilter && ((trendingGroups?.length ?? 0) > 0 || (recommendedGroups?.length ?? 0) > 0) && (
               <h2 className="text-base font-bold text-gray-900 mb-4">All communities</h2>
