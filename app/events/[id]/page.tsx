@@ -579,6 +579,7 @@ export default async function EventPage({
         totalCostPence: event.total_cost_pence ?? null,
         allowGuestRsvp: event.allow_guest_rsvp ?? true,
         pricePence: event.price_pence ?? null,
+        mapsUrl: event.maps_url ?? null,
       }}
       group={{
         id: event.group_id,
