@@ -249,7 +249,7 @@ export default async function EventPage({
     // Member RSVPs with profiles (limit 20)
     svc
       .from('rsvps')
-      .select('id, user_id, status, created_at, profiles ( full_name, avatar_url )')
+      .select('id, user_id, status, created_at, profiles:user_id ( full_name, avatar_url )')
       .eq('event_id', id)
       .in('status', ['going', 'maybe'])
       .order('created_at', { ascending: true })
