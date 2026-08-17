@@ -65,7 +65,7 @@ export async function POST(
     if (type === 'member' && user_id) {
       const { data: rsvp } = await supabase
         .from('rsvps')
-        .select('id, status, checked_in_at, user_id, profiles ( full_name, avatar_url )')
+        .select('id, status, checked_in_at, user_id, profiles:user_id ( full_name, avatar_url )')
         .eq('event_id', eventId)
         .eq('user_id', user_id)
         .maybeSingle()

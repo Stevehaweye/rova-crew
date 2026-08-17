@@ -53,7 +53,7 @@ export default async function CheckinPage({
   const [memberRsvpsResult, guestRsvpsResult, plusOnesResult] = await Promise.all([
     supabase
       .from('rsvps')
-      .select('id, user_id, status, checked_in_at, profiles ( full_name, avatar_url )')
+      .select('id, user_id, status, checked_in_at, profiles:user_id ( full_name, avatar_url )')
       .eq('event_id', eventId)
       .in('status', ['going', 'maybe'])
       .order('created_at', { ascending: true }),
