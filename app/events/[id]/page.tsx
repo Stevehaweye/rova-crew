@@ -246,10 +246,12 @@ export default async function EventPage({
       .eq('event_id', id)
       .eq('status', 'confirmed'),
 
-    // Member RSVPs with profiles (limit 20)
+    // Member RSVPs (profiles fetched separately below — the FK path from
+    // rsvps.user_id to public.profiles isn't reliable through PostgREST's
+    // nested-select syntax on this table, so we do a two-step lookup).
     svc
       .from('rsvps')
-      .select('id, user_id, status, created_at, profiles:user_id ( full_name, avatar_url )')
+      .select('id, user_id, status, created_at')
       .eq('event_id', id)
       .in('status', ['going', 'maybe'])
       .order('created_at', { ascending: true })
@@ -290,6 +292,35 @@ export default async function EventPage({
       .eq('id', event.created_by)
       .maybeSingle(),
   ])
+
+  // Fetch profiles for the returned RSVPs separately. Doing this via a
+  // nested PostgREST select from rsvps was returning empty because the
+  // FK path isn't set up between rsvps.user_id and public.profiles.
+  const memberRsvpUserIds = (memberRsvps.data ?? [])
+    .map((r) => r.user_id)
+    .filter(Boolean) as string[]
+
+  const memberProfilesById = new Map<string, { full_name: string; avatar_url: string | null }>()
+  if (memberRsvpUserIds.length > 0) {
+    const { data: memberProfileRows } = await svc
+      .from('profiles')
+      .select('id, full_name, avatar_url')
+      .in('id', memberRsvpUserIds)
+    for (const p of memberProfileRows ?? []) {
+      memberProfilesById.set(p.id, {
+        full_name: p.full_name ?? 'Member',
+        avatar_url: p.avatar_url ?? null,
+      })
+    }
+  }
+
+  const memberRsvpsWithProfiles = (memberRsvps.data ?? []).map((r) => ({
+    id: r.id,
+    userId: r.user_id,
+    status: r.status as 'going' | 'maybe',
+    createdAt: r.created_at,
+    profile: memberProfilesById.get(r.user_id) ?? { full_name: 'Member', avatar_url: null },
+  }))
 
   const memberGoingCount = goingCountResult.count ?? 0
   const memberMaybeCount = maybeCountResult.count ?? 0
@@ -556,18 +587,7 @@ export default async function EventPage({
         logoUrl: group.logo_url,
         primaryColour: group.primary_colour,
       }}
-      initialMemberRsvps={
-        (memberRsvps.data ?? []).map((r) => {
-          const profile = r.profiles as unknown as { full_name: string; avatar_url: string | null } | null
-          return {
-            id: r.id,
-            userId: r.user_id,
-            status: r.status as 'going' | 'maybe',
-            createdAt: r.created_at,
-            profile: profile ?? { full_name: 'Member', avatar_url: null },
-          }
-        })
-      }
+      initialMemberRsvps={memberRsvpsWithProfiles}
       initialGuestRsvps={
         (guestRsvps.data ?? []).map((r) => ({
           id: r.id,
