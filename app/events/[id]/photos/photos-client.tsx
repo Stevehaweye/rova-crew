@@ -73,6 +73,32 @@ export default function PhotosClient({
     fetchPhotos()
   }, [fetchPhotos])
 
+  // Auto-open the file picker when the album is opened with ?upload=1.
+  // Lets the "Add photo" button on the event page skip an extra tap and
+  // jump straight to the OS photo library / camera picker.
+  const autoTriggeredRef = useRef(false)
+  useEffect(() => {
+    if (autoTriggeredRef.current) return
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('upload') !== '1') return
+    autoTriggeredRef.current = true
+
+    // Clean the query param out of the URL so a refresh doesn't re-trigger.
+    const cleanUrl = window.location.pathname + window.location.hash
+    window.history.replaceState({}, '', cleanUrl)
+
+    // Delay one tick so the file input is definitely mounted.
+    const t = setTimeout(() => {
+      if (consentLevel === 'never') {
+        alert('Photo uploads are disabled by your privacy settings. You can change this in Settings > Photo Privacy.')
+        return
+      }
+      fileInputRef.current?.click()
+    }, 0)
+    return () => clearTimeout(t)
+  }, [consentLevel])
+
   // ── Upload handler ──────────────────────────────────────────────────────
 
   function handleUploadClick() {

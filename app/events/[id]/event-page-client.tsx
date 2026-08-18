@@ -1595,6 +1595,35 @@ export default function EventPageClient({
               />
             )}
 
+            {/* Photos — logged-in only. View or upload straight to the album. */}
+            {currentUser && (
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                <div className="flex items-center justify-between mb-1">
+                  <h2 className="text-base font-bold text-gray-900">Event Photos</h2>
+                  <span className="text-xs text-gray-400" aria-hidden="true">📷</span>
+                </div>
+                <p className="text-xs text-gray-500 mb-4">
+                  Share moments from before, during and after the event.
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Link
+                    href={`/events/${event.id}/photos`}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:border-gray-300 hover:bg-gray-50 transition-colors"
+                  >
+                    View photos
+                  </Link>
+                  <Link
+                    href={`/events/${event.id}/photos?upload=1`}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                    style={{ backgroundColor: colour }}
+                  >
+                    <span aria-hidden="true">＋</span>
+                    Add photo
+                  </Link>
+                </div>
+              </div>
+            )}
+
             {/* Shared Cost Ticker — mobile only */}
             {event.paymentType === 'shared_cost' && event.totalCostPence && event.minParticipants && (
               <div className="lg:hidden">
