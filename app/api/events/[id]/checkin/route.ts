@@ -306,7 +306,10 @@ export async function PATCH(
         return NextResponse.json({ success: false, error: 'Update failed.' }, { status: 500 })
       }
     } else if (table === 'event_plus_ones') {
-      const { error } = await supabase
+      // event_plus_ones now has RLS on with no anon policies (migration 008),
+      // so writes must go through the service client.
+      const svc = createServiceClient()
+      const { error } = await svc
         .from('event_plus_ones')
         .update({ checked_in: action === 'checkin' })
         .eq('id', rsvp_id)
