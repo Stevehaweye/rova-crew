@@ -50,26 +50,32 @@ export default async function CheckinPage({
 
   if (!event) redirect(`/g/${slug}/admin/events`)
 
+  // Service client is used for every table read on this page — the app-wide
+  // convention (see CLAUDE.md) is that data operations bypass RLS through
+  // the service role. `event_plus_ones` also has RLS enabled with no anon
+  // policies (migration 008), so the auth client would return zero rows here.
+  const svc = createServiceClient()
+
   // Fetch all RSVPs (members + guests + plus-ones) for this event.
   // Profiles come from a second query — the FK path from rsvps.user_id
   // to public.profiles isn't set up for PostgREST nested selects, so
   // the previous inlined `profiles:user_id(...)` version returned null.
   const [memberRsvpsResult, guestRsvpsResult, plusOnesResult] = await Promise.all([
-    supabase
+    svc
       .from('rsvps')
       .select('id, user_id, status, checked_in_at')
       .eq('event_id', eventId)
       .in('status', ['going', 'maybe'])
       .order('created_at', { ascending: true }),
 
-    supabase
+    svc
       .from('guest_rsvps')
       .select('id, first_name, last_name, status, checked_in_at, qr_token')
       .eq('event_id', eventId)
       .in('status', ['confirmed', 'attended'])
       .order('created_at', { ascending: true }),
 
-    supabase
+    svc
       .from('event_plus_ones')
       .select('id, user_id, guest_name, checked_in')
       .eq('event_id', eventId)
@@ -77,8 +83,7 @@ export default async function CheckinPage({
   ])
 
   // Batch-fetch profiles for every user referenced by member RSVPs or plus-one
-  // hosts. Service client bypasses RLS so we always get names + avatars.
-  const svc = createServiceClient()
+  // hosts.
   const relevantUserIds = Array.from(new Set([
     ...(memberRsvpsResult.data ?? []).map((r) => r.user_id),
     ...(plusOnesResult.data ?? []).map((r) => r.user_id),
